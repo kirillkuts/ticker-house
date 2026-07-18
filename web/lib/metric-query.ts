@@ -87,20 +87,22 @@ yoy AS (
   GROUP BY security_id
 ),
 px AS (
-  -- Group by source_symbol too: symbol_history can map a reused old ticker
-  -- (e.g. FB) onto the same security_id; join below picks the current symbol.
-  SELECT security_id,
-         replaceAll(source_symbol, '.', '-') AS px_symbol,
-         argMax(toFloat64(close), trade_date) AS last_close
-  FROM daily_prices FINAL
-  WHERE trade_date >= (SELECT max(trade_date) FROM daily_prices) - 7
-  GROUP BY security_id, px_symbol
+  -- One close per security. A security can have price rows under several
+  -- source symbols (a reused old ticker like FB, a sibling class like GOOG);
+  -- prefer the current-ticker rows, then the freshest date.
+  SELECT p.security_id AS security_id,
+         argMax(toFloat64(p.close),
+                (replaceAll(p.source_symbol, '.', '-') = upper(s.ticker), p.trade_date, p.source_symbol)) AS last_close
+  FROM daily_prices AS p FINAL
+  INNER JOIN securities AS s FINAL ON s.security_id = p.security_id AND s.is_active
+  WHERE p.trade_date >= (SELECT max(trade_date) FROM daily_prices) - 7
+  GROUP BY p.security_id
 )
 SELECT s.ticker AS ticker, s.company_name AS company_name, ${selectCols}
 FROM ttm
 INNER JOIN securities AS s FINAL ON s.security_id = ttm.security_id AND s.is_active
 LEFT JOIN yoy ON yoy.security_id = ttm.security_id
-LEFT JOIN px ON px.security_id = ttm.security_id AND px.px_symbol = upper(s.ticker)
+LEFT JOIN px ON px.security_id = ttm.security_id
 ${withTickers ? "WHERE upper(s.ticker) IN {tickers:Array(String)}" : ""}`;
 }
 

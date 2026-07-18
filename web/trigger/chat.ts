@@ -3,7 +3,7 @@ import { streamText, stepCountIs, tool } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
-import { singleStockPrice, fundamentals, RANGES } from "../lib/views";
+import { singleStockPrice, fundamentals, companyOverview, RANGES } from "../lib/views";
 import { METRICS, METRIC_KEYS } from "../lib/metric-registry";
 import { runMetricQuery } from "../lib/metric-query";
 
@@ -21,15 +21,40 @@ Coverage: prices exist only for 2026-07-01..2026-07-16 (use range "7d" or
 NVDA META BRK-B GOOGL AMZN TSLA JPM LLY. For anything outside coverage, say
 so briefly instead of calling a tool.
 
-Tool choice: use query_metrics for ratios, screens, rankings, and
-multi-stock comparisons ("which stocks...", "compare X and Y", "rank by...").
-Use show_price_chart / show_fundamentals for a single stock's price action or
-statement history. P/E and other "latest" metrics are TTM-based; some metrics
-can be NULL for a stock (missing source data), and filters exclude NULL rows.
+Tool choice: for broad single-stock questions ("tell me about X", "overview
+of X", "how is X doing overall", "is X a good company"), use
+show_company_overview — it is the richest view (price, valuation vs peers,
+scores, growth, margins, health). Use query_metrics for ratios, screens,
+rankings, and multi-stock comparisons ("which stocks...", "compare X and Y",
+"rank by..."). Use show_price_chart / show_fundamentals when the question is
+narrowly about price action or statement history. P/E and other "latest"
+metrics are TTM-based; some metrics can be NULL for a stock (missing source
+data), and filters exclude NULL rows.
+
+Canvas: the UI has a side panel ("canvas") where views are pinned. If the
+user message ends with a [canvas] block, that is its current content — never
+read it aloud, but use it to answer questions about the canvas and to edit
+it with the edit_canvas tool ("remove the price chart", "clear the canvas",
+"add this to the canvas"). To put NEW views on the canvas, first call the
+view tools, then edit_canvas with add_new_views: true.
+
+When a canvas exists and the user says "add ..." or "show ... too", they
+want a new view pinned next to the others: pick the best view tool for it,
+call it, then edit_canvas with add_new_views: true. Do this even if an
+existing view partly overlaps the data; never refuse with "it's already
+there". Only skip the tool call when NO view can show the requested data.
 
 If no view fits the question, answer in plain text.`;
 
 export const tools = {
+  show_company_overview: tool({
+    description:
+      "Render the full company dashboard for one stock: price, market cap, valuation vs peers (P/E, P/S), 0-5 scores (value, growth, profitability, health, cash flow), annual revenue/income history, margin trends, and balance-sheet health. Use for broad single-stock questions: 'tell me about X', 'overview of X', 'is X a good company?'. Only works for the covered fundamentals universe.",
+    inputSchema: z.object({
+      ticker: z.string().describe("Stock ticker, e.g. NVDA"),
+    }),
+    execute: async ({ ticker }) => companyOverview(ticker),
+  }),
   show_price_chart: tool({
     description:
       "Render a price dashboard for one stock: OHLC chart, volume, and KPI tiles. Use for any question about a stock's price, performance, or recent movement.",
@@ -79,6 +104,16 @@ export const tools = {
         .describe("Rendering hint; use 'auto' unless the user asks for a specific format"),
     }),
     execute: async (spec) => runMetricQuery(spec),
+  }),
+  edit_canvas: tool({
+    description:
+      "Edit the user's canvas — the dashboard panel beside the chat that holds pinned views. The current canvas contents, when any, are listed at the end of the user message in a [canvas] block as 'id — description' lines. Use remove/clear to drop views the user no longer wants, and add_new_views:true to pin the views you created earlier in THIS response onto the canvas (call it AFTER the view tools). The client applies the change; this tool only records the instruction.",
+    inputSchema: z.object({
+      remove: z.array(z.string()).optional().describe("View ids (from the [canvas] block) to remove"),
+      clear: z.boolean().optional().describe("Remove everything from the canvas first"),
+      add_new_views: z.boolean().optional().describe("Add all views created in this response to the canvas"),
+    }),
+    execute: async (op) => ({ applied: true, ...op }),
   }),
 };
 

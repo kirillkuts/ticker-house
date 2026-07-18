@@ -12,12 +12,20 @@ function fmtVol(v: number): string {
   return `${Math.round(v / 1e3)}K`;
 }
 
+const TOOLTIP_STYLE = {
+  background: "var(--tooltip-bg)",
+  border: "1px solid var(--tooltip-border)",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "var(--foreground)",
+};
+
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "up" | "down" }) {
-  const color = accent === "up" ? "text-emerald-600" : accent === "down" ? "text-red-600" : "";
+  const color = accent === "up" ? "var(--viz-up-text)" : accent === "down" ? "var(--viz-down-text)" : undefined;
   return (
     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
       <div className="text-xs text-neutral-500">{label}</div>
-      <div className={`text-lg font-semibold ${color}`}>{value}</div>
+      <div className="text-lg font-semibold" style={color ? { color } : undefined}>{value}</div>
     </div>
   );
 }
@@ -37,31 +45,31 @@ export function SingleStockPrice({ data }: { data: SingleStockPriceData }) {
           <span className="font-semibold">{data.companyName}</span>{" "}
           <span className="text-neutral-500 text-sm">{data.ticker} · {data.industry || data.sector}</span>
         </div>
-        <div className={`font-semibold ${up ? "text-emerald-600" : "text-red-600"}`}>
+        <div className="font-semibold" style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}>
           ${data.kpis.lastClose.toFixed(2)} ({up ? "+" : ""}{data.kpis.changePct.toFixed(2)}%)
         </div>
       </div>
 
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={points}>
-          <XAxis dataKey="label" fontSize={11} />
-          <YAxis domain={["auto", "auto"]} fontSize={11} width={55}
+          <XAxis dataKey="label" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} />
+          <YAxis domain={["auto", "auto"]} fontSize={11} width={55} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false}
                  tickFormatter={(v: number) => `$${v.toFixed(0)}`} />
-          <Tooltip formatter={(v) => `$${Number(v).toFixed(2)}`} />
-          <Line type="monotone" dataKey="close" stroke="#2563eb" dot={false} strokeWidth={2} />
-          <Line type="monotone" dataKey="high" stroke="#94a3b8" dot={false} strokeDasharray="3 3" strokeWidth={1} />
-          <Line type="monotone" dataKey="low" stroke="#94a3b8" dot={false} strokeDasharray="3 3" strokeWidth={1} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => `$${Number(v).toFixed(2)}`} />
+          <Line type="monotone" dataKey="close" stroke="var(--viz-1)" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="high" stroke="var(--viz-muted)" dot={false} strokeDasharray="3 3" strokeWidth={1} />
+          <Line type="monotone" dataKey="low" stroke="var(--viz-muted)" dot={false} strokeDasharray="3 3" strokeWidth={1} />
         </ComposedChart>
       </ResponsiveContainer>
 
       <ResponsiveContainer width="100%" height={80}>
         <BarChart data={points}>
           <XAxis dataKey="label" fontSize={11} hide />
-          <YAxis fontSize={10} width={55} tickFormatter={fmtVol} />
-          <Tooltip formatter={(v) => fmtVol(Number(v))} />
+          <YAxis fontSize={10} width={55} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false} tickFormatter={fmtVol} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => fmtVol(Number(v))} />
           <Bar dataKey="volume">
             {points.map((p, i) => (
-              <Cell key={i} fill={p.up ? "#34d399" : "#f87171"} />
+              <Cell key={i} fill={p.up ? "var(--viz-good)" : "var(--viz-bad)"} />
             ))}
           </Bar>
         </BarChart>

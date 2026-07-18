@@ -7,7 +7,19 @@ import {
 import type { MetricQueryResult, MetricColumn } from "@/lib/metric-query";
 import type { Unit } from "@/lib/metric-registry";
 
-const LINE_COLORS = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be185d", "#4d7c0f"];
+// Validated categorical slots, in fixed order (defined in globals.css).
+const LINE_COLORS = [
+  "var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)",
+  "var(--viz-5)", "var(--viz-6)", "var(--viz-7)", "var(--viz-8)",
+];
+
+const TOOLTIP_STYLE = {
+  background: "var(--tooltip-bg)",
+  border: "1px solid var(--tooltip-border)",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "var(--foreground)",
+};
 
 export function formatValue(value: unknown, unit: Unit): string {
   if (value === null || value === undefined || value === "") return "—";
@@ -130,9 +142,9 @@ function TsLineChart({ data, column }: { data: MetricQueryResult; column: Metric
       <div className="text-sm font-medium mb-1">{column.label}</div>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={points}>
-          <XAxis dataKey="period" fontSize={11} />
-          <YAxis fontSize={11} width={60} tickFormatter={(v: number) => formatValue(v, column.unit)} />
-          <Tooltip formatter={(v) => formatValue(Number(v), column.unit)} />
+          <XAxis dataKey="period" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} />
+          <YAxis fontSize={11} width={60} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => formatValue(v, column.unit)} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => formatValue(Number(v), column.unit)} />
           <Legend />
           {tickers.map((t, i) => (
             <Line key={t} type="monotone" dataKey={t} stroke={LINE_COLORS[i % LINE_COLORS.length]}
@@ -152,10 +164,10 @@ function LatestBarChart({ data }: { data: MetricQueryResult }) {
       <div className="text-sm font-medium mb-1">{column.label}</div>
       <ResponsiveContainer width="100%" height={Math.max(160, points.length * 28)}>
         <BarChart data={points} layout="vertical">
-          <XAxis type="number" fontSize={11} tickFormatter={(v: number) => formatValue(v, column.unit)} />
-          <YAxis type="category" dataKey="ticker" fontSize={11} width={60} />
-          <Tooltip formatter={(v) => formatValue(Number(v), column.unit)} />
-          <Bar dataKey="value" fill="#2563eb" />
+          <XAxis type="number" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} tickFormatter={(v: number) => formatValue(v, column.unit)} />
+          <YAxis type="category" dataKey="ticker" fontSize={11} width={60} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => formatValue(Number(v), column.unit)} />
+          <Bar dataKey="value" fill="var(--viz-1)" radius={[0, 3, 3, 0]} maxBarSize={18} />
         </BarChart>
       </ResponsiveContainer>
     </div>

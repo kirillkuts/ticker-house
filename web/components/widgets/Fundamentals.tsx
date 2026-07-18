@@ -31,16 +31,16 @@ export function Fundamentals({ data }: { data: FundamentalsData }) {
 
       <ResponsiveContainer width="100%" height={240}>
         <ComposedChart data={points}>
-          <XAxis dataKey="fiscalLabel" fontSize={11} />
-          <YAxis yAxisId="money" fontSize={11} width={50} tickFormatter={(v: number) => `$${v}B`} />
-          <YAxis yAxisId="pct" orientation="right" fontSize={11} width={40}
+          <XAxis dataKey="fiscalLabel" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} />
+          <YAxis yAxisId="money" fontSize={11} width={50} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v}B`} />
+          <YAxis yAxisId="pct" orientation="right" fontSize={11} width={40} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false}
                  tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-          <Tooltip />
+          <Tooltip contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }} />
           <Legend />
-          <Bar yAxisId="money" dataKey="revenueB" name="Revenue ($B)" fill="#60a5fa" />
-          <Bar yAxisId="money" dataKey="netIncomeB" name="Net income ($B)" fill="#34d399" />
+          <Bar yAxisId="money" dataKey="revenueB" name="Revenue ($B)" fill="var(--viz-1)" radius={[3, 3, 0, 0]} maxBarSize={18} />
+          <Bar yAxisId="money" dataKey="netIncomeB" name="Net income ($B)" fill="var(--viz-2)" radius={[3, 3, 0, 0]} maxBarSize={18} />
           <Line yAxisId="pct" type="monotone" dataKey="netMarginPct" name="Net margin %"
-                stroke="#f59e0b" dot strokeWidth={2} />
+                stroke="var(--viz-4)" dot strokeWidth={2} />
         </ComposedChart>
       </ResponsiveContainer>
 
