@@ -1,0 +1,29 @@
+{
+  "name": "stocks",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "sync:securities": "tsx src/cli/sync-securities.ts",
+    "trigger:dev": "npx trigger.dev@latest dev",
+    "sync:prices": "tsx src/cli/sync-prices.ts",
+    "sync:financials": "tsx src/cli/sync-financials.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@clickhouse/client": "^1.23.1",
+    "@trigger.dev/sdk": "^4.5.4",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  },
+  "type": "module"
+}

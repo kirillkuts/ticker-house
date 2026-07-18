@@ -1,0 +1,11 @@
+# Enriched tier: one ticker per line. Grow this toward the S&P 500.
+AAPL
+MSFT
+NVDA
+META
+BRK-B
+GOOGL
+AMZN
+TSLA
+JPM
+LLY

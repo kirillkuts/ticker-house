@@ -70,3 +70,10 @@ CREATE TABLE ticker_house.daily_prices
 ENGINE = ReplacingMergeTree(version)
 ORDER BY (security_id, trade_date);
 ```
+
+## Tasks
+
+1. [Find security-master data sources](../tasks/task-01.md)
+2. [Normalize and ingest securities](../tasks/task-02.md)
+3. [Find daily-price data sources](../tasks/task-03.md)
+4. [Normalize and ingest daily prices](../tasks/task-04.md)
