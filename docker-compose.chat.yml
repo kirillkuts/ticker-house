@@ -1,0 +1,32 @@
+services:
+  librechat:
+    image: ghcr.io/danny-avila/librechat:latest
+    container_name: ticker-house-librechat
+    ports:
+      - "3080:3080"
+    depends_on:
+      - chat-mongodb
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: mongodb://chat-mongodb:27017/LibreChat
+      ENDPOINTS: agents,custom
+      OPENROUTER_KEY: ${OPENROUTER_KEY}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      SEARCH: "false"
+      ALLOW_REGISTRATION: "true"
+      NO_INDEX: "true"
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  chat-mongodb:
+    image: mongo:7
+    container_name: ticker-house-mongodb
+    command: mongod --noauth
+    volumes:
+      - ./.librechat/mongodb:/data/db
