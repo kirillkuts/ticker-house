@@ -6,10 +6,23 @@ import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
 import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, RANGES } from "../lib/views";
 import { METRICS, METRIC_KEYS } from "../lib/metric-registry";
 import { runMetricQuery } from "../lib/metric-query";
+import { queryRows } from "../lib/clickhouse";
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
 
-const SYSTEM = `You are TickerHouse, a stock research assistant.
+// The covered universe comes from the data, not a hardcoded list — it has
+// already outgrown its original 10 tickers once. Cached per worker process.
+let coveredPromise: Promise<string[]> | null = null;
+function coveredTickers(): Promise<string[]> {
+  coveredPromise ??= queryRows<{ ticker: string }>(
+    `SELECT ticker FROM securities FINAL
+     WHERE is_active AND security_id IN (SELECT DISTINCT security_id FROM financial_periods)
+     ORDER BY ticker`,
+  ).then((rows) => rows.map((r) => r.ticker));
+  return coveredPromise;
+}
+
+const systemPrompt = (covered: string[]) => `You are TickerHouse, a stock research assistant.
 
 Answer questions about stocks by rendering predefined dashboard views via
 tools. NEVER invent numbers; the tools return the real data and the UI
@@ -26,8 +39,8 @@ name shows what it means.
 
 Coverage: price charts work for nearly ALL US tickers, but only for
 2026-07-01..2026-07-16 (use range "7d" or "1m"). Fundamentals, metrics and
-the company overview (back to ~2008) exist only for: AAPL MSFT NVDA META
-BRK-B GOOGL AMZN TSLA JPM LLY. When asked about a stock outside that list,
+the company overview (back to ~2008) exist only for these ${covered.length}
+covered tickers: ${covered.join(" ")}. When asked about a stock outside that list,
 say fundamentals aren't covered AND offer/show its price chart — do not
 claim you have no price data. Only refuse outright when even a price chart
 can't work.
@@ -105,6 +118,7 @@ existing view partly overlaps the data; never refuse with "it's already
 there". Only skip the tool call when NO view can show the requested data.
 
 If no view fits the question, answer in plain text.`;
+
 
 export const tools = {
   show_company_overview: tool({
@@ -200,7 +214,7 @@ export const tools = {
   }),
   suggest_follow_ups: tool({
     description:
-      "Offer the user 2-3 clickable follow-up questions, shown as buttons under your answer. Call this exactly once at the END of every response, after any view tools and after your text. Each prompt MUST be phrased so answering it calls a view tool — name concrete metrics, charts or dashboards ('Compare net margins for MSFT vs GOOGL', 'Chart AAPL's EPS over 5 years'), never an open discussion question ('Is it a good company?' without naming metrics). Each prompt must also respect coverage: only the covered tickers (AAPL MSFT NVDA META BRK-B GOOGL AMZN TSLA JPM LLY), price questions only about the two covered weeks (never '1-year price'), metrics/fundamentals back to ~2008.",
+      "Offer the user 2-3 clickable follow-up questions, shown as buttons under your answer. Call this exactly once at the END of every response, after any view tools and after your text. Each prompt MUST be phrased so answering it calls a view tool — name concrete metrics, charts or dashboards ('Compare net margins for MSFT vs GOOGL', 'Chart AAPL's EPS over 5 years'), never an open discussion question ('Is it a good company?' without naming metrics). Each prompt must also respect coverage: only the covered tickers listed in the system prompt, price questions only about the two covered weeks (never '1-year price'), metrics/fundamentals back to ~2008.",
     inputSchema: z.object({
       suggestions: z
         .array(z.object({
@@ -247,7 +261,7 @@ export const tickerChat = chat.agent({
     streamText({
       ...chat.toStreamTextOptions({ tools }),
       model: openrouter(MODELS[clientData?.speed ?? "default"]),
-      system: SYSTEM,
+      system: systemPrompt(await coveredTickers()),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(7),
