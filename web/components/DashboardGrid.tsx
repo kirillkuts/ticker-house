@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { removeDashboardWidgetAction } from "@/app/actions";
 import { AskContext } from "./widgets/FollowUps";
 import { ViewBody } from "./ViewBody";
+import { recordOpen } from "./interest";
 
 export interface DashboardWidgetData {
   widgetId: string;
   tool: string;
+  input?: Record<string, unknown>;
   output: unknown;
 }
 
@@ -17,6 +19,15 @@ export interface DashboardWidgetData {
 export function DashboardGrid({ widgets }: { widgets: DashboardWidgetData[] }) {
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const visible = widgets.filter((w) => !removed.has(w.widgetId));
+
+  // Loading the dashboard opens every saved single-stock view (task 046);
+  // recordOpen debounces per session per ticker.
+  useEffect(() => {
+    for (const w of widgets) {
+      if (typeof w.input?.ticker === "string") recordOpen(w.input.ticker, "dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ask = (text: string) => {
     window.location.assign(`/?ask=${encodeURIComponent(text)}`);

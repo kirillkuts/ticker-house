@@ -14,6 +14,7 @@ import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
 import { Header } from "./Header";
 import { ChatHistory } from "./ChatHistory";
 import { HomeScreen } from "./HomeScreen";
+import { recordOpen } from "./interest";
 
 type Part = ChatUIMessage["parts"][number];
 
@@ -299,6 +300,20 @@ export function Chat({
       sendMessage({ text }, { metadata: { speed: "fast" } }); // no direct data — a pre-prompted ask, so the fast model handles it
     }
   };
+
+  // Entering a stored chat re-opens its stock views (task 046): record
+  // interest once per session per ticker for the restored single-stock views.
+  // Live views don't need this — the agent records them server-side (044).
+  useEffect(() => {
+    for (const m of initialMessages) {
+      for (const p of m.parts) {
+        if (!p.type.startsWith("tool-show_") || !("input" in p)) continue;
+        const input = p.input as Record<string, unknown> | undefined;
+        if (typeof input?.ticker === "string") recordOpen(input.ticker, "chat");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A seeded question (dashboard chip → new chat) fires once on mount.
   const askedInitial = useRef(false);

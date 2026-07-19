@@ -23,6 +23,7 @@ export default async function DashboardPage({
     recipes.map(async (r) => ({
       widgetId: r.widgetId,
       tool: r.tool,
+      input: r.input,
       output: await runDashboardRecipe(r),
     })),
   );

@@ -89,6 +89,15 @@ export async function watchlistSymbolsAction(): Promise<string[]> {
   return (await getWatchlist(user.id)).map((w) => w.symbol);
 }
 
+// A stock view was opened outside the recorded paths — a dashboard load, a
+// restored chat (task 046). Client-side debounced per session per ticker;
+// anonymous sessions skip silently and recordInterest never throws.
+export async function recordStockOpenAction(symbol: string, source: string) {
+  const user = await currentUser();
+  if (!user) return;
+  await recordInterest(user.id, symbol, "overview_view", { source: source.slice(0, 40) });
+}
+
 // Save a widget recipe (tool + input) to a named dashboard / remove one.
 export async function saveDashboardWidgetAction(widgetId: string, tool: string, inputJson: string, dashboardId: string) {
   const user = await requireUser();
