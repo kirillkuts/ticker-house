@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import type { FundamentalsData } from "@/lib/views";
 import { FollowUps } from "./FollowUps";
+import { FactDot, useFactMarkers } from "./FactMarkers";
 import { axisMoney, titleCase } from "./CompanyOverview";
 
 function fmtMoney(v: number | null): string {
@@ -30,6 +31,8 @@ const lastNonNull = (xs: (number | null)[]): number | null =>
 
 export function Fundamentals({ data }: { data: FundamentalsData }) {
   const points = data.rows;
+  // Fact anchors from the model's explanation (task 029); [] outside chat.
+  const factsFor = useFactMarkers(data.ticker);
   const legend = [
     { color: "var(--viz-1)", label: "Revenue", value: fmtMoney(lastNonNull(points.map((r) => r.revenue))) },
     { color: "var(--viz-2)", label: "Net income", value: fmtMoney(lastNonNull(points.map((r) => r.netIncome))) },
@@ -87,6 +90,7 @@ export function Fundamentals({ data }: { data: FundamentalsData }) {
             <th className="py-1 font-normal">Period</th>
             <th className="py-1 font-normal text-right">Revenue</th>
             <th className="py-1 font-normal text-right">Net income</th>
+            <th className="py-1 font-normal text-right">Net margin</th>
             <th className="py-1 font-normal text-right">Diluted EPS</th>
             <th className="py-1 font-normal text-right">FCF</th>
           </tr>
@@ -95,10 +99,11 @@ export function Fundamentals({ data }: { data: FundamentalsData }) {
           {data.rows.map((r) => (
             <tr key={r.periodEnd} className="border-t border-neutral-100 dark:border-neutral-800">
               <td className="py-1">{r.fiscalLabel}</td>
-              <td className="py-1 text-right">{fmtMoney(r.revenue)}</td>
-              <td className="py-1 text-right">{fmtMoney(r.netIncome)}</td>
-              <td className="py-1 text-right">{r.dilutedEps?.toFixed(2) ?? "—"}</td>
-              <td className="py-1 text-right">{fmtMoney(r.freeCashFlow)}</td>
+              <td className="py-1 text-right">{fmtMoney(r.revenue)}<FactDot markers={factsFor(r.fiscalLabel, "revenue")} /></td>
+              <td className="py-1 text-right">{fmtMoney(r.netIncome)}<FactDot markers={factsFor(r.fiscalLabel, "net_income")} /></td>
+              <td className="py-1 text-right">{r.netMarginPct !== null ? `${r.netMarginPct.toFixed(1)}%` : "—"}<FactDot markers={factsFor(r.fiscalLabel, "net_margin")} /></td>
+              <td className="py-1 text-right">{r.dilutedEps?.toFixed(2) ?? "—"}<FactDot markers={factsFor(r.fiscalLabel, "eps")} /></td>
+              <td className="py-1 text-right">{fmtMoney(r.freeCashFlow)}<FactDot markers={factsFor(r.fiscalLabel, "fcf")} /></td>
             </tr>
           ))}
         </tbody>

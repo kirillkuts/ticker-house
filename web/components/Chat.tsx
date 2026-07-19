@@ -10,6 +10,7 @@ import type { RecentChat } from "@/lib/chats";
 import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
+import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
 import { Header } from "./Header";
 import { ChatHistory } from "./ChatHistory";
 import { HomeScreen } from "./HomeScreen";
@@ -62,6 +63,8 @@ function ToolPart({ part }: { part: Part }) {
       <div className="text-xs text-neutral-400 my-1">▦ canvas updated</div>
     ) : null;
   }
+  // Applied client-side (dots on the referenced view); nothing to render inline.
+  if (part.type === "tool-highlight_facts") return null;
   if (part.type.startsWith("tool-")) {
     return <div className="text-xs text-neutral-400 animate-pulse">loading view…</div>;
   }
@@ -104,8 +107,18 @@ function isViewToolPart(part: Part): boolean {
   return (
     part.type.startsWith("tool-") &&
     part.type !== "tool-edit_canvas" &&
-    part.type !== "tool-suggest_follow_ups"
+    part.type !== "tool-suggest_follow_ups" &&
+    part.type !== "tool-highlight_facts"
   );
+}
+
+// Fact anchors a message's highlight_facts calls declared for its views.
+function factMarkersOf(m: { parts: Part[] }): FactMarker[] {
+  return m.parts.flatMap((p) => {
+    if (p.type !== "tool-highlight_facts" || !("input" in p) || !p.input) return [];
+    const input = p.input as { ticker?: string; facts?: { period: string; column: string; snippet: string }[] };
+    return (input.facts ?? []).map((f) => ({ ...f, ticker: input.ticker }));
+  });
 }
 
 // A tool part whose output failed (view tools return { error } instead of throwing).
@@ -687,7 +700,9 @@ export function Chat({
                         </button>
                       </div>
                     )}
-                    <ToolPart part={part} />
+                    <FactMarkersContext.Provider value={factMarkersOf(m)}>
+                      <ToolPart part={part} />
+                    </FactMarkersContext.Provider>
                   </div>
                 );
               })}
@@ -837,7 +852,11 @@ export function Chat({
                       remove
                     </button>
                   </div>
-                  <ToolPart part={part} />
+                  <FactMarkersContext.Provider
+                    value={factMarkersOf(messages.find((m) => m.id === ref.msgId) ?? { parts: [] })}
+                  >
+                    <ToolPart part={part} />
+                  </FactMarkersContext.Provider>
                 </div>
               ))}
             </div>
