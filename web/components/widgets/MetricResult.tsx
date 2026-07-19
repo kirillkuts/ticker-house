@@ -124,7 +124,7 @@ function KpiTiles({ data }: { data: MetricQueryResult }) {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {data.columns.map((c) => (
-          <div key={c.key} className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
+          <div key={c.key} data-explain="stat tile" className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
             <div className="text-xs text-neutral-500"><MetricLabel column={c} /></div>
             <div className="text-lg font-semibold">{formatValue(row[c.key], c.unit)}</div>
           </div>

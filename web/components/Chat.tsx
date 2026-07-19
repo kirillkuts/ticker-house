@@ -155,6 +155,36 @@ interface ViewRef {
 }
 const refKey = (r: ViewRef) => `${r.msgId}:${r.partIdx}`;
 
+// Explain mode (Cmd held) can scope a question to a piece of a widget, not
+// just the whole view. These are the pieces worth asking about: anything a
+// widget explicitly labels via data-explain, plus structural kinds we can
+// recognize without annotations (charts, tables, headings, prose).
+const EXPLAIN_SELECTOR = "[data-explain], .recharts-responsive-container, table, h3, p";
+
+function explainTarget(from: HTMLElement, within: HTMLElement): HTMLElement | null {
+  const el = from.closest(EXPLAIN_SELECTOR) as HTMLElement | null;
+  return el && el !== within && within.contains(el) ? el : null;
+}
+
+function explainKind(el: HTMLElement): string {
+  if (el.dataset.explain) return el.dataset.explain;
+  if (el.classList.contains("recharts-responsive-container")) return "chart";
+  if (el.tagName === "TABLE") return "table";
+  if (el.tagName === "H3") return "section heading";
+  return "text block";
+}
+
+// Highlight box for the sub-element under the cursor, positioned relative to
+// its widget wrapper (keyed by the wrapper's view ref).
+interface SubTarget {
+  key: string;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  kind: string;
+}
+
 // One canvas per dashboard answer: the views one assistant message produced,
 // labeled by the question that triggered it.
 interface CanvasGroup {
@@ -234,16 +264,24 @@ export function Chat({
   }, [initialAsk]);
 
   // Cmd held = explain mode: canvas widgets highlight, and a click asks the
-  // fast model what the view shows instead of interacting with it.
+  // fast model what the view shows instead of interacting with it. Hovering
+  // narrows the target to the chart / table / title / text under the cursor.
   const [metaHeld, setMetaHeld] = useState(false);
+  const [subTarget, setSubTarget] = useState<SubTarget | null>(null);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.metaKey) setMetaHeld(true);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.key === "Meta") setMetaHeld(false);
+      if (e.key === "Meta") {
+        setMetaHeld(false);
+        setSubTarget(null);
+      }
     };
-    const clear = () => setMetaHeld(false);
+    const clear = () => {
+      setMetaHeld(false);
+      setSubTarget(null);
+    };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", clear);
@@ -708,19 +746,67 @@ export function Chat({
                 <div
                   key={refKey(ref)}
                   className={`chip-in relative group ${metaHeld ? "cursor-help rounded-xl ring-2 ring-blue-300 dark:ring-blue-700" : ""}`}
-                  title={metaHeld ? "Cmd+click: explain this view" : undefined}
+                  title={metaHeld ? "Cmd+click: explain this" : undefined}
+                  onMouseOverCapture={(e) => {
+                    if (!metaHeld) return;
+                    const wrap = e.currentTarget as HTMLElement;
+                    const el = explainTarget(e.target as HTMLElement, wrap);
+                    const key = refKey(ref);
+                    if (!el) {
+                      setSubTarget((h) => (h && h.key === key ? null : h));
+                      return;
+                    }
+                    const wr = wrap.getBoundingClientRect();
+                    const r = el.getBoundingClientRect();
+                    setSubTarget({
+                      key,
+                      top: r.top - wr.top,
+                      left: r.left - wr.left,
+                      width: r.width,
+                      height: r.height,
+                      kind: explainKind(el),
+                    });
+                  }}
+                  onMouseLeave={() => setSubTarget((h) => (h && h.key === refKey(ref) ? null : h))}
                   onClickCapture={(e) => {
                     if (!e.metaKey) return;
                     if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
                     if (status === "submitted" || status === "streaming") return;
                     e.preventDefault();
                     e.stopPropagation();
-                    ask(
-                      `What is this view showing? Explain it in plain language for a non-expert. I'm asking about the canvas view "${refKey(ref)} — ${describePart(part)}". It's already on my canvas, so don't create it again — just explain what it shows and how to read it.`,
-                      { fast: true },
-                    );
+                    const view = `${refKey(ref)} — ${describePart(part)}`;
+                    const el = explainTarget(e.target as HTMLElement, e.currentTarget as HTMLElement);
+                    if (el) {
+                      // Scope the question to the hovered piece: name its kind,
+                      // its section, and quote its visible text so the model
+                      // knows exactly which numbers the user is looking at.
+                      const kind = explainKind(el);
+                      const section = el.closest("section")?.querySelector("h3")?.textContent?.trim();
+                      // innerText skips SVG <text>, so charts fall back to
+                      // textContent to still quote their axis/legend labels.
+                      const snippet = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
+                      ask(
+                        `What is this ${kind} showing? Explain it in plain language for a non-expert. I'm asking specifically about the ${kind}${section ? ` in the "${section}" section` : ""} of the canvas view "${view}".${snippet ? ` Its visible content: "${snippet}".` : ""} The view is already on my canvas, so don't create anything — just explain this part and how to read it.`,
+                        { fast: true },
+                      );
+                    } else {
+                      ask(
+                        `What is this view showing? Explain it in plain language for a non-expert. I'm asking about the canvas view "${view}". It's already on my canvas, so don't create it again — just explain what it shows and how to read it.`,
+                        { fast: true },
+                      );
+                    }
                   }}
                 >
+                  {metaHeld && subTarget?.key === refKey(ref) && (
+                    <div
+                      className="pointer-events-none absolute z-20 rounded-md ring-2 ring-blue-500"
+                      style={{ top: subTarget.top, left: subTarget.left, width: subTarget.width, height: subTarget.height }}
+                    >
+                      <span className="absolute left-0 -top-4 rounded bg-blue-600 px-1 py-px text-[10px] font-medium text-white">
+                        {subTarget.kind}
+                      </span>
+                    </div>
+                  )}
                   <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"

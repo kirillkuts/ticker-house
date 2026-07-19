@@ -145,7 +145,7 @@ function Section({
 
 function StatTile({ label, value, hint }: { label: React.ReactNode; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3">
+    <div data-explain="stat tile" className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3">
       <div className="text-xs text-neutral-500">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
       {hint && <div className="text-[11px] text-neutral-400">{hint}</div>}
@@ -155,7 +155,7 @@ function StatTile({ label, value, hint }: { label: React.ReactNode; value: strin
 
 function LegendRow({ items }: { items: { color: string; label: string; value?: string }[] }) {
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+    <div data-explain="legend" className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
       {items.map((it) => (
         <span key={it.label} className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: it.color }} />
