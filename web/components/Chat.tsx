@@ -387,7 +387,20 @@ export function Chat({
       .map((p, i) => ({ part: p, ref: { msgId: m.id, partIdx: i } }))
       .filter((x) => isViewToolPart(x.part));
     if (views.length === 0) return;
-    const modelEdited = m.parts.some((p) => p.type === "tool-edit_canvas");
+    // "The model edited the canvas itself, so its edit wins" only applies to
+    // COMPLETED edits that don't add this answer's views. A still-streaming
+    // edit_canvas call must not disqualify: it would momentarily empty this
+    // canvas and flash the previous one back (task 028). And a completed
+    // add_new_views edit wants these views on canvas anyway — qualifying keeps
+    // them visible during the render before the pinning effect runs.
+    const edits = m.parts.filter((p) => p.type === "tool-edit_canvas");
+    const editsDone = edits.every((p) => "state" in p && p.state === "output-available");
+    const editAdds = edits.some(
+      (p) =>
+        "state" in p && p.state === "output-available" &&
+        Boolean((p.output as { add_new_views?: boolean } | undefined)?.add_new_views),
+    );
+    const modelEdited = edits.length > 0 && editsDone && !editAdds;
     const canvasMode = canvases.length > 0;
     const qualifies =
       !modelEdited &&
