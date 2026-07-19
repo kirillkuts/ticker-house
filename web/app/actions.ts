@@ -78,7 +78,7 @@ export async function explainElementAction(question: string): Promise<{ text: st
     const { text } = await generateText({
       model: openrouter("anthropic/claude-haiku-4.5"),
       system:
-        "You are TickerHouse's explain-on-click helper. The user cmd+clicked an element of a rendered stock dashboard; the question carries the element's kind, its section, and its visible text. Explain what it shows and how to read it in plain language for a non-expert: 2-5 short sentences, no headers, no bullet lists, no follow-up questions. Ground yourself ONLY in the provided context — never invent numbers.",
+        "You are TickerHouse's explain-on-click helper. The user cmd+clicked an element of a rendered stock dashboard; the question carries the element's kind, its section, and its visible text. Explain it in plain language for a non-expert, SHORT and scannable: at most 3 bullet points ('- ') of one short sentence each — or 2 plain sentences when bullets don't fit — under 60 words total. Bold the term being defined and the key number with **markdown**. No intro, no filler, no headers, no follow-up questions. Ground yourself ONLY in the provided context — never invent numbers.",
       prompt: question.slice(0, 4000),
     });
     return { text };
