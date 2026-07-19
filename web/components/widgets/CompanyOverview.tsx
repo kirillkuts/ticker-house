@@ -278,6 +278,8 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
           </div>
           <FollowUps
             asks={[
+              { label: "Where revenue comes from", prompt: `Show ${tk}'s revenue by segment and explain where the money comes from` },
+              { label: "What it spends money on", prompt: `Show ${tk}'s expense breakdown — what are its biggest costs?` },
               { label: "Revenue & profit trend", prompt: `Chart ${tk}'s revenue and net income over the last 5 years` },
               { label: "Closest business peers", prompt: `Compare ${tk} with its closest covered peers on P/E, net margin and revenue growth` },
             ]}
@@ -456,10 +458,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         caption="latest reported balance sheet"
         deepDive={`Chart ${tk}'s cash, total debt and debt to equity over the last 5 years and explain in plain language how solid the balance sheet is`}
       >
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <StatTile label="Total assets" value={money(t.totalAssets)} hint="everything it owns" />
+          <StatTile label="Total liabilities" value={money(t.totalLiabilities)} hint="everything it owes" />
+          <StatTile label="Equity" value={money(t.equity)} hint="assets minus liabilities" />
           <StatTile label="Cash" value={money(t.cash)} />
           <StatTile label="Total debt" value={money(t.totalDebt)} />
-          <StatTile label="Equity" value={money(t.equity)} />
           <StatTile label="Current ratio" value={ratio(t.currentRatio)} />
         </div>
         <div>
@@ -476,6 +480,7 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         </div>
         <FollowUps
           asks={[
+            { label: "Balance sheet history", prompt: `Show ${tk}'s total assets, total liabilities, cash and total debt over the last 5 years` },
             { label: "Debt vs peers", prompt: "Rank the covered stocks by debt to equity, least indebted first" },
             { label: "Cash & debt trend", prompt: `Show ${tk}'s cash and total debt over the last 5 years` },
           ]}

@@ -516,6 +516,8 @@ export interface OverviewTtm {
   cash: number | null;
   totalDebt: number | null;
   equity: number | null;
+  totalAssets: number | null;
+  totalLiabilities: number | null;
   revenueGrowthYoy: number | null;
   epsGrowthYoy: number | null;
 }
@@ -632,6 +634,7 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
         "gross_margin", "operating_margin", "net_margin", "roe", "roa",
         "free_cash_flow", "operating_cash_flow", "debt_to_equity", "current_ratio",
         "cash_and_equivalents", "total_debt", "shareholders_equity",
+        "total_assets", "total_liabilities",
         "revenue_growth_yoy", "eps_growth_yoy",
       ],
       period: "latest",
@@ -755,6 +758,8 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
       cash: num(mine.cash_and_equivalents),
       totalDebt: num(mine.total_debt),
       equity: num(mine.shareholders_equity),
+      totalAssets: num(mine.total_assets),
+      totalLiabilities: num(mine.total_liabilities),
       revenueGrowthYoy: num(mine.revenue_growth_yoy),
       epsGrowthYoy: num(mine.eps_growth_yoy),
     },
