@@ -82,6 +82,28 @@ export function ensureSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS interest_user_symbol ON stock_interest_events (user_id, symbol);
       CREATE INDEX IF NOT EXISTS interest_user_recent ON stock_interest_events (user_id, created_at DESC);
+      -- Briefing layer 1: one shared brief per (stock, day), whoever watches
+      -- it. max(brief_date) is the event-detection watermark, so quiet days
+      -- write a row too. Layer 2: the per-user assembled briefing.
+      CREATE TABLE IF NOT EXISTS stock_briefs (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        security_id integer,
+        symbol      text NOT NULL,
+        brief_date  date NOT NULL,
+        status      text NOT NULL,            -- 'events' | 'quiet'
+        events      jsonb,
+        body        text NOT NULL DEFAULT '',
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (symbol, brief_date)
+      );
+      CREATE TABLE IF NOT EXISTS briefings (
+        id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        briefing_date date NOT NULL,
+        body          text NOT NULL,
+        created_at    timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (user_id, briefing_date)
+      );
     `);
   })();
   return ensured;

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { schedules, logger } from "@trigger.dev/sdk";
 import { detectEvents, lastBriefDate, PRICE_MOVE_THRESHOLD_PCT, type StockEvents } from "../lib/daily-events";
+import { runDailyBriefing } from "../lib/briefing";
 
 // Task 048: weekday-morning pipeline — refresh prices and filings, then
 // detect per-watched-stock events for the briefing agent (049). The syncs
@@ -64,21 +65,24 @@ export const dailySync = schedules.task({
       if (code !== 0) logger.error(`${script} exited ${code} — detecting on existing data`);
     }
 
-    // Watermark: last briefed day (049's stock_briefs); before 049 exists,
-    // yesterday.
-    const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const since = (await lastBriefDate()) ?? yesterday;
+    // Detection runs inside the briefer: watermark (max brief_date, else
+    // yesterday), events per watched stock, layer-1 briefs, layer-2 per-user
+    // briefings. Quiet days write rows without LLM calls.
+    // Per-stock event log (048) — the briefer re-detects internally with the
+    // same watermark; detection is two cheap ClickHouse queries.
+    const since = (await lastBriefDate()) ?? day(1);
+    for (const e of await detectEvents(since)) logger.info(describeStock(e), { symbol: e.symbol });
 
-    const events = await detectEvents(since);
-    for (const e of events) logger.info(describeStock(e), { symbol: e.symbol });
-    const active = events.filter((e) => !e.quiet);
-    logger.info(`event detection done`, {
-      since,
+    const today = new Date().toISOString().slice(0, 10);
+    const report = await runDailyBriefing(today, { log: (m) => logger.info(m) });
+    logger.info("daily briefing done", {
+      since: report.since,
       thresholdPct: PRICE_MOVE_THRESHOLD_PCT,
-      watched: events.length,
-      withEvents: active.length,
+      briefs: report.briefs.length,
+      briefings: report.briefings.length,
+      errors: report.errors,
     });
-    return { since, events };
+    return report;
   },
 });
 

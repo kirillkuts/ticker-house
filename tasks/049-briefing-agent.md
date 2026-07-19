@@ -1,6 +1,6 @@
 # 049 — Briefing agent: per-stock briefs + per-user assembly (021 phase 4)
 
-**Status:** planned
+**Status:** done
 
 Depends on 048. Trigger.dev task reusing the OpenRouter + AI SDK setup from
 web/trigger/chat.ts (same maxOutputTokens cap — see the 044 commit; the OpenRouter
