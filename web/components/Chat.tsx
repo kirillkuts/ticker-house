@@ -243,7 +243,7 @@ export function Chat({
         },
       ]);
     } catch {
-      sendMessage({ text }); // no direct data — let the agent handle it
+      sendMessage({ text }, { metadata: { speed: "fast" } }); // no direct data — a pre-prompted ask, so the fast model handles it
     }
   };
 
@@ -446,13 +446,14 @@ export function Chat({
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
 
   // Every outgoing question — typed or clicked — carries the [canvas] block so
-  // the model always knows what is pinned.
-  const ask = (text: string) => {
+  // the model always knows what is pinned. Pre-prompted questions (fast: true)
+  // ride with speed metadata so the agent picks a smaller model for them.
+  const ask = (text: string, opts?: { fast?: boolean }) => {
     const canvasBlock = canvasParts.length
       ? "\n\n[canvas]\n" +
         canvasParts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
       : "";
-    sendMessage({ text: text + canvasBlock });
+    sendMessage({ text: text + canvasBlock }, opts?.fast ? { metadata: { speed: "fast" } } : undefined);
   };
 
   const composer = (
@@ -497,7 +498,7 @@ export function Chat({
         <HomeScreen
           home={home}
           recent={recent}
-          onAsk={(text) => sendMessage({ text })}
+          onAsk={(text) => sendMessage({ text }, { metadata: { speed: "fast" } })}
           onTickerTile={instantOverview}
           composer={composer}
         />

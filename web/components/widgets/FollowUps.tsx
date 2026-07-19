@@ -5,8 +5,10 @@ import { createContext, useContext } from "react";
 // Chat provides ask() so any widget — rendered inline or on the canvas — can
 // send a follow-up question as if the user typed it. Without a provider
 // (static renders, previews) the interactive affordances hide themselves.
+// `fast: true` marks a pre-prompted question (chip click): those are phrased
+// to map straight onto view tools, so the agent runs them on a smaller model.
 export const AskContext = createContext<{
-  ask: ((text: string) => void) | null;
+  ask: ((text: string, opts?: { fast?: boolean }) => void) | null;
   busy: boolean;
 }>({ ask: null, busy: false });
 
@@ -22,7 +24,7 @@ export function FollowUps({ asks }: { asks: { label: string; prompt: string }[] 
           key={a.label}
           type="button"
           disabled={busy}
-          onClick={() => ask(a.prompt)}
+          onClick={() => ask(a.prompt, { fast: true })}
           title={a.prompt}
           className="rounded-full border border-neutral-200 dark:border-neutral-800 px-2.5 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 transition-colors enabled:hover:border-blue-400 enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400 disabled:opacity-50"
         >
@@ -41,7 +43,7 @@ export function TickerButton({ ticker }: { ticker: string }) {
     <button
       type="button"
       disabled={busy}
-      onClick={() => ask(`Give me the full overview of ${ticker}`)}
+      onClick={() => ask(`Give me the full overview of ${ticker}`, { fast: true })}
       title={`Open the full ${ticker} overview`}
       className="underline decoration-dotted underline-offset-2 decoration-neutral-400 transition-colors enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400"
     >

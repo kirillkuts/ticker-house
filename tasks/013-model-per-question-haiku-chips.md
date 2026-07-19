@@ -1,6 +1,8 @@
 # 013 — Pick the model per question: chips run on fast Haiku
 
-**Status:** todo
+**Status:** done
+
+Resolution: per-turn metadata rides `sendMessage(msg, { metadata })` and arrives in the agent run as `clientData` (validated by a new `clientDataSchema`). All pre-prompted paths send `{ speed: "fast" }`: FollowUps chips and TickerButton (via `ask(text, { fast: true })`), home suggestion pills, and the tile-click fallback. The agent picks `anthropic/claude-haiku-4.5` for fast turns, `anthropic/claude-sonnet-5` otherwise; missing/unknown metadata falls back to default. Typed composer questions carry no metadata. Typecheck passes; needs the Trigger dev worker to reload before a live chip click shows the speedup.
 
 From user: "can i choose model based on the question? for example make it so that clicking pre-prompted questions kicks off fast haiku".
 

@@ -180,13 +180,27 @@ export const tools = {
 
 export type ChatUIMessage = InferChatUIMessageFromTools<typeof tools>;
 
+// Per-turn model choice: pre-prompted chip clicks arrive with
+// { speed: "fast" } metadata (they're phrased to map straight onto view
+// tools, so a small model suffices); typed questions get the default model.
+// Unknown or missing metadata falls back to the default.
+const MODELS = {
+  fast: "anthropic/claude-haiku-4.5",
+  default: "anthropic/claude-sonnet-5",
+} as const;
+
+const clientDataSchema = z
+  .object({ speed: z.enum(["fast", "default"]).optional() })
+  .optional();
+
 export const tickerChat = chat.agent({
   id: "ticker-chat",
   tools,
-  run: async ({ messages, tools, signal }) =>
+  clientDataSchema,
+  run: async ({ messages, tools, signal, clientData }) =>
     streamText({
       ...chat.toStreamTextOptions({ tools }),
-      model: openrouter("anthropic/claude-sonnet-5"),
+      model: openrouter(MODELS[clientData?.speed ?? "default"]),
       system: SYSTEM,
       messages,
       abortSignal: signal,
