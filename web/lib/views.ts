@@ -700,7 +700,9 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
         "revenue_growth_yoy", "eps_growth_yoy",
       ],
       period: "latest",
-      limit: 50,
+      // The percentile scores rank against the whole covered universe, and a
+      // company outside the snapshot can't render at all — never truncate.
+      limit: 500,
     }),
   ]);
 

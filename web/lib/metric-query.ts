@@ -39,7 +39,10 @@ export interface MetricQueryResult {
   note?: string;
 }
 
-const MAX_LIMIT = 50;
+// Internal ceiling. The model-facing tool schema caps `limit` at 50 on its
+// own; internal callers (company overview scoring) need the whole covered
+// universe, which has outgrown 50.
+const MAX_LIMIT = 500;
 const MAX_TS_TICKERS = 8;
 
 // The on-the-fly source for "latest" metrics. When a precomputed
