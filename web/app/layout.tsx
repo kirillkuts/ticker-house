@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ticker House",
+  title: "TickerHouse",
   description: "Ask about a stock. Get an interactive answer.",
 };
 

@@ -1,6 +1,8 @@
 # 017 — Brand name written together: "TickerHouse"
 
-**Status:** todo
+**Status:** done
+
+Resolution: all user-visible occurrences now read "TickerHouse" — header wordmark and link title, layout metadata title, transcript speaker label ("tickerhouse"), and the agent identity in the system prompt. Internal ids (ticker-chat, ticker_house db) untouched. Verified live: home page renders only "TickerHouse"; typecheck passes.
 
 From user screenshot (arrow at the "Ticker House" wordmark on the home header): the brand should be written as one word — "TickerHouse", not "Ticker House".
 

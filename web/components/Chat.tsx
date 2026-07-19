@@ -535,7 +535,7 @@ export function Chat({
           {messages.map((m) => (
             <div key={m.id}>
               <div className="text-xs uppercase tracking-wide text-neutral-400 mb-1">
-                {m.role === "user" ? "you" : "ticker house"}
+                {m.role === "user" ? "you" : "tickerhouse"}
               </div>
               {(() => {
                 // Suggested follow-ups are the closing line of an answer. When

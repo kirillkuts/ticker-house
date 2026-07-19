@@ -18,9 +18,9 @@ function Logo() {
 export function Header({ children }: { children?: React.ReactNode }) {
   return (
     <header className="@container flex items-center justify-between gap-2">
-      <a href="/" className="flex shrink-0 items-center gap-2.5" title="Ticker House home">
+      <a href="/" className="flex shrink-0 items-center gap-2.5" title="TickerHouse home">
         <Logo />
-        <span className="hidden text-lg font-semibold tracking-tight @sm:inline">Ticker House</span>
+        <span className="hidden text-lg font-semibold tracking-tight @sm:inline">TickerHouse</span>
       </a>
       <div className="flex items-center gap-2">{children}</div>
     </header>

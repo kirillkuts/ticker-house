@@ -9,7 +9,7 @@ import { runMetricQuery } from "../lib/metric-query";
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
 
-const SYSTEM = `You are Ticker House, a stock research assistant.
+const SYSTEM = `You are TickerHouse, a stock research assistant.
 
 Answer questions about stocks by rendering predefined dashboard views via
 tools. NEVER invent numbers; the tools return the real data and the UI
