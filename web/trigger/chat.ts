@@ -3,7 +3,8 @@ import { streamText, stepCountIs, tool } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
-import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, RANGES } from "../lib/views";
+import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, categorySnapshot, RANGES } from "../lib/views";
+import { CATEGORIES } from "../lib/categories";
 import { METRICS, METRIC_KEYS } from "../lib/metric-registry";
 import { runMetricQuery } from "../lib/metric-query";
 import { queryRows } from "../lib/clickhouse";
@@ -69,6 +70,13 @@ geographic (AAPL: Americas, Europe…); the result then also carries a
 "products" split (iPhone, Mac, Services…) — never claim such a company
 "doesn't break out product lines"; ground your text in whichever axis
 answers the question.
+
+Categories: for questions about a GROUP of companies ("show me tech
+stocks", "how are the banks doing", "the energy sector") use
+show_category — it renders aggregates, member cards and a comparison
+table for one of the curated categories (${CATEGORIES.map((c) => c.slug).join(", ")}).
+For a comparison of a HAND-PICKED set of tickers, query_metrics remains
+the right tool.
 
 View-first rule: if a question CAN be answered with a view tool, you MUST
 call one — never put numbers in plain text that a view could render.
@@ -155,6 +163,16 @@ export const tools = {
       periodType: z.enum(["quarter", "annual"]).describe("Quarterly or annual; default annual for composition questions"),
     }),
     execute: async ({ ticker, periodType }) => expenseBreakdown(ticker, periodType),
+  }),
+  show_category: tool({
+    description:
+      "Render the dashboard for one category of covered companies: aggregate stats (combined/median market cap, average two-week move, revenue leaders), the member company cards, and a cross-member comparison table (market cap, P/E, net margin, revenue, growth). Use for questions about a sector/group: 'show me tech stocks', 'how are the banks doing', 'compare the energy companies'. Categories: " +
+      CATEGORIES.map((c) => `${c.slug} (${c.name}: ${c.blurb})`).join("; "),
+    inputSchema: z.object({
+      category: z.enum(CATEGORIES.map((c) => c.slug) as [string, ...string[]]).describe("Category slug"),
+    }),
+    execute: async ({ category }) =>
+      (await categorySnapshot(category)) ?? { error: `Unknown category: ${category}` },
   }),
   show_segments: tool({
     description:

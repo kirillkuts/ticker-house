@@ -41,6 +41,7 @@ const VIEW_TOOL_TYPES = new Set([
   "tool-show_fundamentals",
   "tool-show_expense_breakdown",
   "tool-show_segments",
+  "tool-show_category",
   "tool-query_metrics",
 ]);
 
@@ -77,6 +78,7 @@ const TOOL_LABELS: Record<string, string> = {
   "tool-show_fundamentals": "Fundamentals",
   "tool-show_expense_breakdown": "Expense breakdown",
   "tool-show_segments": "Segments",
+  "tool-show_category": "Category",
   "tool-query_metrics": "Metrics",
 };
 
@@ -87,8 +89,9 @@ function describePart(part: Part): string {
   const tickers = t.length <= 3 ? t.join(", ") : `${t.slice(0, 3).join(", ")} +${t.length - 3}`;
   let qualifier = "";
   if ("output" in part && part.output && typeof part.output === "object") {
-    const out = part.output as { range?: string; periodType?: string; spec?: { period?: string; metrics?: string[] } };
-    if (out.range) qualifier = out.range;
+    const out = part.output as { range?: string; periodType?: string; name?: string; slug?: string; spec?: { period?: string; metrics?: string[] } };
+    if (out.slug && out.name) qualifier = out.name;
+    else if (out.range) qualifier = out.range;
     else if (out.periodType) qualifier = out.periodType;
     else if (out.spec) {
       const m = out.spec.metrics ?? [];
@@ -158,6 +161,7 @@ const BIG_VIEW_TYPES = new Set([
   "tool-show_fundamentals",
   "tool-show_expense_breakdown",
   "tool-show_segments",
+  "tool-show_category",
 ]);
 
 // A view on the canvas, identified by its position in the message list so we
@@ -355,9 +359,11 @@ export function Chat({
 
   // As soon as the conversation exists, move the URL to its permanent home
   // without a navigation (a router push would remount and drop the stream).
+  // Category chats keep their own canonical URL (/category/tech IS the chat).
   const hasMessages = messages.length > 0;
   useEffect(() => {
-    if (hasMessages && !window.location.pathname.startsWith("/chat/")) {
+    const path = window.location.pathname;
+    if (hasMessages && !path.startsWith("/chat/") && !path.startsWith("/category/")) {
       window.history.replaceState(null, "", `/chat/${chatId}`);
     }
   }, [hasMessages, chatId]);
