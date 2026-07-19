@@ -61,6 +61,27 @@ export function ensureSchema(): Promise<void> {
       UPDATE dashboard_widgets w SET dashboard_id = d.id
       FROM dashboards d
       WHERE w.dashboard_id IS NULL AND d.user_id = w.user_id AND d.name = 'Default';
+      CREATE TABLE IF NOT EXISTS watchlist (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        security_id integer,                -- nullable: uncovered tickers have prices only
+        symbol      text NOT NULL,          -- uppercase ticker as the user knows it
+        added_at    timestamptz NOT NULL DEFAULT now(),
+        removed_at  timestamptz             -- soft remove: history of adds/removes is the point
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS watchlist_active_unique
+        ON watchlist (user_id, symbol) WHERE removed_at IS NULL;
+      CREATE TABLE IF NOT EXISTS stock_interest_events (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol      text NOT NULL,
+        kind        text NOT NULL,
+        weight      smallint NOT NULL,      -- signed; stamped from kind at insert time
+        context     jsonb,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS interest_user_symbol ON stock_interest_events (user_id, symbol);
+      CREATE INDEX IF NOT EXISTS interest_user_recent ON stock_interest_events (user_id, created_at DESC);
     `);
   })();
   return ensured;
