@@ -233,6 +233,27 @@ export function Chat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAsk]);
 
+  // Cmd held = explain mode: canvas widgets highlight, and a click asks the
+  // fast model what the view shows instead of interacting with it.
+  const [metaHeld, setMetaHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.metaKey) setMetaHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Meta") setMetaHeld(false);
+    };
+    const clear = () => setMetaHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+
   // Widgets saved to the live dashboard this session, keyed by view ref.
   const [savedWidgets, setSavedWidgets] = useState<Set<string>>(new Set());
   const saveWidget = (r: ViewRef, part: Part) => {
@@ -684,7 +705,22 @@ export function Chat({
             )}
             <div className="flex-1 overflow-y-auto p-4">
               {canvasParts.map(({ ref, part }) => (
-                <div key={refKey(ref)} className="chip-in relative group">
+                <div
+                  key={refKey(ref)}
+                  className={`chip-in relative group ${metaHeld ? "cursor-help rounded-xl ring-2 ring-blue-300 dark:ring-blue-700" : ""}`}
+                  title={metaHeld ? "Cmd+click: explain this view" : undefined}
+                  onClickCapture={(e) => {
+                    if (!e.metaKey) return;
+                    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+                    if (status === "submitted" || status === "streaming") return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    ask(
+                      `What is this view showing? Explain it in plain language for a non-expert. I'm asking about the canvas view "${refKey(ref)} — ${describePart(part)}". It's already on my canvas, so don't create it again — just explain what it shows and how to read it.`,
+                      { fast: true },
+                    );
+                  }}
+                >
                   <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"

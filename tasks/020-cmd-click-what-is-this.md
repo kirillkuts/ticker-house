@@ -1,6 +1,8 @@
 # 020 — Cmd+click a canvas widget asks "what is this?" on Haiku
 
-**Status:** todo
+**Status:** done
+
+Resolution: holding Cmd puts canvas widgets in explain mode — blue ring, help cursor, tooltip "Cmd+click: explain this view". Cmd+click (capture phase, skipped when the target is a button/link/input or while streaming) sends "What is this view showing? Explain it in plain language for a non-expert..." naming the view by its refKey + describePart description (the same ids the [canvas] block uses) and stating it's already on the canvas so it must not be re-rendered. Runs with fast:true (Haiku). Meta state clears on keyup/window blur. Canvas panel only for now, per the task. Typecheck passes; the view-first prompt fix in task 021 explicitly allows this explain-only case.
 
 From user: "I want to be able to hover over artifact with cmd button pressed, when clicked it asks a question with haiku 'what is this' giving the context that it's coming from canvas".
 
