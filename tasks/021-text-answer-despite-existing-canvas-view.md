@@ -1,6 +1,8 @@
 # 021 — "Where does NVDA spend its money?" answered in text, no graphic
 
-**Status:** todo
+**Status:** done
+
+Resolution: the system prompt's view-first rule now names this failure mode explicitly — the [canvas] block never satisfies the rule, a similar pinned view is not a reason to answer in text, the tool must be called again in the current answer with one takeaway paragraph. Carved out the one legitimate exception: explicit "what is this view showing?" explain requests (task 020) that name a canvas view and forbid re-rendering. Takes effect when the Trigger dev worker reloads; verify by re-asking "Where does NVDA spend its money?" with the breakdown already pinned.
 
 From user screenshot: the question produced a long bullet-list text answer ("Based on NVDA's expense breakdown (already on your canvas), here's where the money goes... Cost of Revenue: $62.5B (29%)...") instead of a widget. Why: the [canvas] block told the model the expense breakdown was already pinned (from an earlier answer), so it skipped the view tool and recited the numbers in prose — exactly what the view-first rule forbids.
 
