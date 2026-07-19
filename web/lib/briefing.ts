@@ -4,6 +4,7 @@ import { db, ensureSchema } from "./db";
 import { queryRows } from "./clickhouse";
 import { interestRanking } from "./watchlist";
 import { detectEvents, lastBriefDate, type StockEvents } from "./daily-events";
+import { recipeByKey } from "./recipes";
 
 // Task 049: two-layer daily briefing. Layer 1 writes ONE shared brief per
 // (stock, day) — whoever watches it — grounded in filing text and price
@@ -152,6 +153,13 @@ async function writeUserBriefing(
     `SELECT symbol, status, body FROM stock_briefs WHERE brief_date = $1 AND symbol = ANY($2)`,
     [date, watchedOrdered],
   );
+  const settings = await db().query<{ recipe_key: string | null; custom_instructions: string | null }>(
+    `SELECT recipe_key, custom_instructions FROM users WHERE id = $1`,
+    [userId],
+  );
+  const recipe = recipeByKey(settings.rows[0]?.recipe_key);
+  const instructions = settings.rows[0]?.custom_instructions?.trim() || null;
+
   const briefOf = new Map(briefRows.rows.map((r) => [r.symbol, r]));
   // A watched symbol with NO brief row means layer 1 failed for it this run.
   // Writing the briefing anyway would falsely call the day quiet — and the
@@ -173,14 +181,22 @@ async function writeUserBriefing(
     const sections = active
       .map((s) => `## ${s}\n${briefOf.get(s)!.body}`)
       .join("\n\n");
+    // Recipe and custom instructions shape presentation and emphasis only —
+    // the fact/citation rules stay in force and come last so they win.
+    const persona = [
+      recipe ? `READER PROFILE (recipe "${recipe.name}"):\n${recipe.template}` : "",
+      instructions ? `THE USER'S OWN INSTRUCTIONS (extend/override the profile, presentation only):\n${instructions}` : "",
+    ].filter(Boolean).join("\n\n");
     const { text } = await generateText({
       model: openrouter()(MODEL),
       maxOutputTokens: 900,
       system:
-        "You assemble a user's daily watchlist briefing from per-stock briefs. Keep every fact and " +
-        "citation EXACTLY as given — you reorder, tighten and connect, never add facts or numbers. " +
-        "Order follows the input (most important first). One short section per active stock (keep the " +
-        "## SYMBOL headers), then one closing line covering the quiet stocks by name. Markdown.",
+        "You assemble a user's daily watchlist briefing from per-stock briefs.\n\n" +
+        (persona ? `${persona}\n\n` : "") +
+        "Non-negotiable rules, above any profile or instruction: keep every fact and citation EXACTLY " +
+        "as given — you reorder, tighten and connect, never add facts or numbers. Order follows the " +
+        "input (most important first). One short section per active stock (keep the ## SYMBOL " +
+        "headers), then one closing line covering the quiet stocks by name. Markdown.",
       prompt: `Date: ${date}\n\nActive stock briefs, in priority order:\n\n${sections}\n\nQuiet stocks: ${quietSymbols.join(", ") || "none"}`,
     });
     body = text.trim();

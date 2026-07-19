@@ -11,6 +11,8 @@ import { companyOverview } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
 import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "@/lib/watchlist";
+import { recipeByKey } from "@/lib/recipes";
+import { db, ensureSchema } from "@/lib/db";
 
 const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
 
@@ -87,6 +89,36 @@ export async function watchlistSymbolsAction(): Promise<string[]> {
   const user = await currentUser();
   if (!user) return [];
   return (await getWatchlist(user.id)).map((w) => w.symbol);
+}
+
+// Briefing style (task 050): recipe key + custom instructions, columns on
+// users, applied only in briefing layer 2.
+export interface BriefingSettings {
+  recipeKey: string | null;
+  customInstructions: string;
+}
+
+export async function getBriefingSettingsAction(): Promise<BriefingSettings> {
+  const user = await requireUser();
+  await ensureSchema();
+  const res = await db().query<{ recipe_key: string | null; custom_instructions: string | null }>(
+    `SELECT recipe_key, custom_instructions FROM users WHERE id = $1`,
+    [user.id],
+  );
+  return {
+    recipeKey: res.rows[0]?.recipe_key ?? null,
+    customInstructions: res.rows[0]?.custom_instructions ?? "",
+  };
+}
+
+export async function saveBriefingSettingsAction(recipeKey: string | null, customInstructions: string) {
+  const user = await requireUser();
+  await ensureSchema();
+  await db().query(`UPDATE users SET recipe_key = $2, custom_instructions = $3 WHERE id = $1`, [
+    user.id,
+    recipeKey && recipeByKey(recipeKey) ? recipeKey : null,
+    customInstructions.trim().slice(0, 2000) || null,
+  ]);
 }
 
 // A stock view was opened outside the recorded paths — a dashboard load, a

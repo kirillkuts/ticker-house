@@ -1,6 +1,6 @@
 # 050 — Briefing recipes + custom instructions (021 phase 5)
 
-**Status:** planned
+**Status:** done
 
 Depends on 049 (rides with it). Personalization shapes presentation and emphasis in
 layer 2 only — never the shared layer-1 analysis.
@@ -8,8 +8,9 @@ layer 2 only — never the shared layer-1 analysis.
 ## Recipes
 
 Three predefined recipes shipped as plain-text prompt templates the user can read and
-copy: long-term fundamentals, dividend income, swing trader. Store `recipe_key` on user
-settings (or the watchlist — decide once, note it here). `custom_instructions` textarea
+copy: long-term fundamentals, dividend income, swing trader. Decided: `recipe_key` and
+`custom_instructions` live as columns on `users` (per-user, not per-watchlist-entry;
+added via ALTER TABLE IF NOT EXISTS in ensureSchema). `custom_instructions`
 overrides/extends the recipe; it is the power-user escape hatch.
 
 ## UI

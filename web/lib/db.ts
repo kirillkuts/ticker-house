@@ -16,9 +16,23 @@ export function db(): Pool {
 let ensured: Promise<void> | null = null;
 
 // Idempotent schema bootstrap, same pattern the ClickHouse tables used.
+// Serialized via an advisory lock: the ALTER TABLEs take exclusive locks that
+// deadlock when two processes bootstrap interleaved (next dev + trigger dev).
+// A failed bootstrap resets the memo so the next call retries instead of
+// replaying the cached rejection forever.
 export function ensureSchema(): Promise<void> {
-  ensured ??= (async () => {
-    await db().query(`
+  ensured ??= runSchemaBootstrap().catch((e) => {
+    ensured = null;
+    throw e;
+  });
+  return ensured;
+}
+
+async function runSchemaBootstrap(): Promise<void> {
+  const client = await db().connect();
+  try {
+    await client.query("SELECT pg_advisory_lock(727001)");
+    await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         email         text NOT NULL UNIQUE,
@@ -96,6 +110,10 @@ export function ensureSchema(): Promise<void> {
         created_at  timestamptz NOT NULL DEFAULT now(),
         UNIQUE (symbol, brief_date)
       );
+      -- Briefing personalization (task 050): a recipe key from lib/recipes.ts
+      -- and free-form instructions, applied only in briefing layer 2.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS recipe_key text;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_instructions text;
       CREATE TABLE IF NOT EXISTS briefings (
         id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -105,6 +123,8 @@ export function ensureSchema(): Promise<void> {
         UNIQUE (user_id, briefing_date)
       );
     `);
-  })();
-  return ensured;
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(727001)").catch(() => {});
+    client.release();
+  }
 }
