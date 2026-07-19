@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { generateText } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats } from "@/lib/chats";
@@ -64,6 +66,25 @@ export async function saveDashboardWidgetAction(widgetId: string, tool: string, 
 export async function removeDashboardWidgetAction(widgetId: string) {
   const user = await requireUser();
   await removeDashboardWidget(user.id, widgetId);
+}
+
+// Cmd+click "what is this?" (task 032): a one-off explanation shown in a
+// popover beside the clicked element — never posted into the chat thread, so
+// it skips the chat session entirely and calls the fast model directly.
+export async function explainElementAction(question: string): Promise<{ text: string } | { error: string }> {
+  await requireUser();
+  try {
+    const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
+    const { text } = await generateText({
+      model: openrouter("anthropic/claude-haiku-4.5"),
+      system:
+        "You are TickerHouse's explain-on-click helper. The user cmd+clicked an element of a rendered stock dashboard; the question carries the element's kind, its section, and its visible text. Explain what it shows and how to read it in plain language for a non-expert: 2-5 short sentences, no headers, no bullet lists, no follow-up questions. Ground yourself ONLY in the provided context — never invent numbers.",
+      prompt: question.slice(0, 4000),
+    });
+    return { text };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message.slice(0, 200) : "Explanation failed" };
+  }
 }
 
 export async function mintChatAccessToken(chatId: string) {

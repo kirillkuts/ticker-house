@@ -63,6 +63,7 @@ export function MetricLabel({ column }: { column: MetricColumn }) {
   if (!explain) return <>{column.label}</>;
   return (
     <span
+      data-explain="metric"
       className="cursor-help underline decoration-dotted underline-offset-2 decoration-neutral-400 dark:decoration-neutral-600"
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();

@@ -7,7 +7,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
@@ -198,6 +198,19 @@ interface SubTarget {
   kind: string;
 }
 
+// Cmd+click explanation popover (task 032): one at a time, anchored to the
+// clicked element's viewport position (fixed), so it survives canvas
+// switches and re-renders while an answer is still streaming. The answer
+// never enters the chat thread.
+interface ExplainPop {
+  token: number;
+  top: number;
+  left: number;
+  kind: string;
+  status: "loading" | "done" | "error";
+  answer: string;
+}
+
 // One canvas per dashboard answer: the views one assistant message produced,
 // labeled by the question that triggered it.
 interface CanvasGroup {
@@ -281,6 +294,8 @@ export function Chat({
   // narrows the target to the chart / table / title / text under the cursor.
   const [metaHeld, setMetaHeld] = useState(false);
   const [subTarget, setSubTarget] = useState<SubTarget | null>(null);
+  const [explainPop, setExplainPop] = useState<ExplainPop | null>(null);
+  const explainSeq = useRef(0);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.metaKey) setMetaHeld(true);
@@ -798,31 +813,44 @@ export function Chat({
                   onMouseLeave={() => setSubTarget((h) => (h && h.key === refKey(ref) ? null : h))}
                   onClickCapture={(e) => {
                     if (!e.metaKey) return;
-                    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-                    if (status === "submitted" || status === "streaming") return;
+                    const target = e.target as HTMLElement;
+                    if (target.closest("button, a, input, select, textarea")) return;
+                    if (target.closest("[data-explain-popover]")) return;
                     e.preventDefault();
                     e.stopPropagation();
-                    const view = `${refKey(ref)} — ${describePart(part)}`;
-                    const el = explainTarget(e.target as HTMLElement, e.currentTarget as HTMLElement);
-                    if (el) {
-                      // Scope the question to the hovered piece: name its kind,
-                      // its section, and quote its visible text so the model
-                      // knows exactly which numbers the user is looking at.
-                      const kind = explainKind(el);
-                      const section = el.closest("section")?.querySelector("h3")?.textContent?.trim();
-                      // innerText skips SVG <text>, so charts fall back to
-                      // textContent to still quote their axis/legend labels.
-                      const snippet = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
-                      ask(
-                        `What is this ${kind} showing? Explain it in plain language for a non-expert. I'm asking specifically about the ${kind}${section ? ` in the "${section}" section` : ""} of the canvas view "${view}".${snippet ? ` Its visible content: "${snippet}".` : ""} The view is already on my canvas, so don't create anything — just explain this part and how to read it.`,
-                        { fast: true },
+                    // Anchor a popover to the clicked piece (or the whole
+                    // view) and fetch a one-off explanation — the answer
+                    // stays out of the chat thread (task 032).
+                    const wrap = e.currentTarget as HTMLElement;
+                    const el = explainTarget(target, wrap);
+                    const ar = (el ?? wrap).getBoundingClientRect();
+                    const kind = el ? explainKind(el) : "view";
+                    const section = el?.closest("section")?.querySelector("h3")?.textContent?.trim();
+                    // innerText skips SVG <text>, so charts fall back to
+                    // textContent to still quote their axis/legend labels.
+                    const snippet = el
+                      ? (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240)
+                      : "";
+                    const widgetText = (wrap.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1600);
+                    const question = el
+                      ? `The user cmd+clicked a ${kind}${section ? ` in the "${section}" section` : ""} of the view "${describePart(part)}". Its visible content: "${snippet}". Surrounding view text: "${widgetText}". What is this ${kind} showing and how should a non-expert read it?`
+                      : `The user cmd+clicked the view "${describePart(part)}". Its visible text: "${widgetText}". What is this view showing and how should a non-expert read it?`;
+                    const token = ++explainSeq.current;
+                    setExplainPop({
+                      token,
+                      top: Math.min(ar.bottom + 6, window.innerHeight - 160),
+                      left: Math.min(Math.max(ar.left, 8), window.innerWidth - 336),
+                      kind,
+                      status: "loading",
+                      answer: "",
+                    });
+                    explainElementAction(question).then((res) => {
+                      setExplainPop((p) =>
+                        p && p.token === token
+                          ? { ...p, status: "error" in res ? "error" : "done", answer: "error" in res ? res.error : res.text }
+                          : p,
                       );
-                    } else {
-                      ask(
-                        `What is this view showing? Explain it in plain language for a non-expert. I'm asking about the canvas view "${view}". It's already on my canvas, so don't create it again — just explain what it shows and how to read it.`,
-                        { fast: true },
-                      );
-                    }
+                    });
                   }}
                 >
                   {metaHeld && subTarget?.key === refKey(ref) && (
@@ -864,6 +892,39 @@ export function Chat({
         </aside>
       )}
     </div>
+    {explainPop && (
+      <div
+        data-explain-popover
+        className="fixed z-50 w-80 rounded-xl border p-3 shadow-lg"
+        style={{
+          top: explainPop.top, left: explainPop.left,
+          background: "var(--tooltip-bg)", borderColor: "var(--tooltip-border)",
+        }}
+      >
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <span className="text-[11px] uppercase tracking-wide text-neutral-400">
+            what is this {explainPop.kind}?
+          </span>
+          <button
+            type="button"
+            onClick={() => setExplainPop(null)}
+            aria-label="Dismiss explanation"
+            className="-mr-1 -mt-1 rounded px-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+          >
+            ✕
+          </button>
+        </div>
+        {explainPop.status === "loading" ? (
+          <div className="animate-pulse text-sm text-neutral-500">Thinking…</div>
+        ) : explainPop.status === "error" ? (
+          <div className="text-sm text-red-500">{explainPop.answer}</div>
+        ) : (
+          <div className="prose-chat max-h-72 space-y-2 overflow-y-auto text-[13px] leading-relaxed">
+            <ReactMarkdown>{explainPop.answer}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    )}
     </AskContext.Provider>
   );
 }
