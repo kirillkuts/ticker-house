@@ -3,7 +3,9 @@ import { streamText, stepCountIs, tool } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
-import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, categorySnapshot, RANGES } from "../lib/views";
+import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, categorySnapshot, watchlistQuotes, RANGES } from "../lib/views";
+import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "../lib/watchlist";
+import { chatOwner } from "../lib/chats";
 import { CATEGORIES } from "../lib/categories";
 import { METRICS, METRIC_KEYS } from "../lib/metric-registry";
 import { runMetricQuery } from "../lib/metric-query";
@@ -125,17 +127,79 @@ call it, then edit_canvas with add_new_views: true. Do this even if an
 existing view partly overlaps the data; never refuse with "it's already
 there". Only skip the tool call when NO view can show the requested data.
 
+Watchlist: when the user asks to watch or track a stock ("watch NVDA",
+"add AMD to my watchlist") call add_to_watchlist; "stop watching" /
+"remove X" calls remove_from_watchlist; "what am I watching" / "show my
+watchlist" calls show_watchlist. NEVER claim a stock was added or removed
+without calling the tool — the tool result is the only truth. Confirm in
+one short sentence naming what's now watched; if the tool returns an
+error, relay it honestly instead of pretending success.
+
 If no view fits the question, answer in plain text.`;
 
+// chat_id → user_id, pinned by the authed startChatSession action before this
+// run boots. Cached per chatId; a miss or pg failure resolves to null and is
+// not cached, so a later tool call can retry.
+const ownerCache = new Map<string, Promise<string | null>>();
+function resolveOwner(chatId: string): Promise<string | null> {
+  let p = ownerCache.get(chatId);
+  if (!p) {
+    p = chatOwner(chatId).catch(() => null).then((userId) => {
+      if (!userId) ownerCache.delete(chatId);
+      return userId;
+    });
+    ownerCache.set(chatId, p);
+  }
+  return p;
+}
 
-export const tools = {
+async function editWatchlist(chatId: string | undefined, ticker: string, op: "add" | "remove") {
+  const userId = chatId ? await resolveOwner(chatId) : null;
+  if (!userId) return { ok: false as const, error: "No signed-in user is bound to this chat, so the watchlist can't be changed." };
+  try {
+    if (op === "add") await addToWatchlist(userId, ticker);
+    else await removeFromWatchlist(userId, ticker);
+    const watching = (await getWatchlist(userId)).map((w) => w.symbol);
+    return { ok: true as const, watching };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Watchlist write failed" };
+  }
+}
+
+// Tool set factory, resolved fresh each turn by chat.agent's function-form
+// `tools` so the executes know the chatId. Every single-stock view records a
+// view_rendered interest event, and the FIRST view call of the turn also
+// records chat_question — the cheapest reliable proxy for "the user asked
+// about this ticker" (chip clicks count too: a click is a question).
+// query_metrics is excluded: multi-stock screens aren't single-stock interest.
+// All recording is fire-and-forget; with no resolvable user it skips silently.
+function makeTools(chatCtx?: { chatId: string }) {
+  let questionRecorded = false;
+  const noteInterest = (ticker: string, toolName: string) => {
+    const chatId = chatCtx?.chatId;
+    if (!chatId) return;
+    const isQuestion = !questionRecorded;
+    questionRecorded = true;
+    void (async () => {
+      const userId = await resolveOwner(chatId);
+      if (!userId) return;
+      const context = { chat_id: chatId, tool: toolName };
+      await recordInterest(userId, ticker, "view_rendered", context);
+      if (isQuestion) await recordInterest(userId, ticker, "chat_question", context);
+    })();
+  };
+
+  return {
   show_company_overview: tool({
     description:
       "Render the full company dashboard for one stock: price, market cap, valuation vs peers (P/E, P/S), 0-5 scores (value, growth, profitability, health, cash flow), annual revenue/income history, margin trends, and balance-sheet health. Use for broad single-stock questions: 'tell me about X', 'overview of X', 'is X a good company?'. Only works for the covered fundamentals universe.",
     inputSchema: z.object({
       ticker: z.string().describe("Stock ticker, e.g. NVDA"),
     }),
-    execute: async ({ ticker }) => companyOverview(ticker),
+    execute: async ({ ticker }) => {
+      noteInterest(ticker, "show_company_overview");
+      return companyOverview(ticker);
+    },
   }),
   show_price_chart: tool({
     description:
@@ -144,7 +208,10 @@ export const tools = {
       ticker: z.string().describe("Stock ticker, e.g. NVDA"),
       range: z.enum(Object.keys(RANGES) as [string, ...string[]]).describe("Time range"),
     }),
-    execute: async ({ ticker, range }) => singleStockPrice(ticker, range as keyof typeof RANGES),
+    execute: async ({ ticker, range }) => {
+      noteInterest(ticker, "show_price_chart");
+      return singleStockPrice(ticker, range as keyof typeof RANGES);
+    },
   }),
   show_fundamentals: tool({
     description:
@@ -153,7 +220,10 @@ export const tools = {
       ticker: z.string().describe("Stock ticker, e.g. AAPL"),
       periodType: z.enum(["quarter", "annual"]).describe("Quarterly or annual statements"),
     }),
-    execute: async ({ ticker, periodType }) => fundamentals(ticker, periodType),
+    execute: async ({ ticker, periodType }) => {
+      noteInterest(ticker, "show_fundamentals");
+      return fundamentals(ticker, periodType);
+    },
   }),
   show_expense_breakdown: tool({
     description:
@@ -162,7 +232,10 @@ export const tools = {
       ticker: z.string().describe("Stock ticker, e.g. META"),
       periodType: z.enum(["quarter", "annual"]).describe("Quarterly or annual; default annual for composition questions"),
     }),
-    execute: async ({ ticker, periodType }) => expenseBreakdown(ticker, periodType),
+    execute: async ({ ticker, periodType }) => {
+      noteInterest(ticker, "show_expense_breakdown");
+      return expenseBreakdown(ticker, periodType);
+    },
   }),
   show_category: tool({
     description:
@@ -180,7 +253,10 @@ export const tools = {
     inputSchema: z.object({
       ticker: z.string().describe("Stock ticker, e.g. META"),
     }),
-    execute: async ({ ticker }) => segmentBreakdown(ticker),
+    execute: async ({ ticker }) => {
+      noteInterest(ticker, "show_segments");
+      return segmentBreakdown(ticker);
+    },
   }),
   query_metrics: tool({
     description: [
@@ -213,6 +289,48 @@ export const tools = {
         .describe("Rendering hint; use 'auto' unless the user asks for a specific format"),
     }),
     execute: async (spec) => runMetricQuery(spec),
+  }),
+  add_to_watchlist: tool({
+    description:
+      "Add one stock to the user's watchlist. Use when the user says 'watch X', 'add X to my watchlist', 'track X'. Returns { ok, watching } with the updated symbol list on success, or { ok: false, error } — confirm or relay in one short sentence.",
+    inputSchema: z.object({
+      ticker: z.string().describe("Stock ticker, e.g. NVDA"),
+    }),
+    execute: async ({ ticker }) => editWatchlist(chatCtx?.chatId, ticker, "add"),
+  }),
+  remove_from_watchlist: tool({
+    description:
+      "Remove one stock from the user's watchlist. Use when the user says 'stop watching X', 'remove X from my watchlist', 'unwatch X'. Returns { ok, watching } with the updated symbol list on success, or { ok: false, error }.",
+    inputSchema: z.object({
+      ticker: z.string().describe("Stock ticker, e.g. NVDA"),
+    }),
+    execute: async ({ ticker }) => editWatchlist(chatCtx?.chatId, ticker, "remove"),
+  }),
+  show_watchlist: tool({
+    description:
+      "List the user's current watchlist with the last closing price and change for each symbol. Use for 'what am I watching', 'show my watchlist'. Symbols without price data come back with null prices — say the symbol is watched but has no price data, don't drop it.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const userId = chatCtx?.chatId ? await resolveOwner(chatCtx.chatId) : null;
+      if (!userId) return { ok: false as const, error: "No signed-in user is bound to this chat." };
+      try {
+        const entries = await getWatchlist(userId);
+        const quotes = await watchlistQuotes(entries.map((e) => e.symbol));
+        const quoteOf = new Map(quotes.map((q) => [q.symbol, q]));
+        return {
+          ok: true as const,
+          watching: entries.map((e) => ({
+            symbol: e.symbol,
+            addedAt: e.addedAt,
+            companyName: quoteOf.get(e.symbol)?.companyName ?? null,
+            lastClose: quoteOf.get(e.symbol)?.lastClose ?? null,
+            changePct: quoteOf.get(e.symbol)?.changePct ?? null,
+          })),
+        };
+      } catch (e) {
+        return { ok: false as const, error: e instanceof Error ? e.message : "Couldn't load the watchlist" };
+      }
+    },
   }),
   highlight_facts: tool({
     description:
@@ -254,7 +372,13 @@ export const tools = {
     }),
     execute: async (op) => ({ applied: true, ...op }),
   }),
-};
+  };
+}
+
+// Context-free instance: schema/type source for the UI and for boot-time
+// history conversion. Live turns get makeTools({ chatId }) via the agent's
+// per-turn tools function.
+export const tools = makeTools();
 
 export type ChatUIMessage = InferChatUIMessageFromTools<typeof tools>;
 
@@ -273,12 +397,16 @@ const clientDataSchema = z
 
 export const tickerChat = chat.agent({
   id: "ticker-chat",
-  tools,
+  tools: ({ chatId }) => makeTools({ chatId }),
   clientDataSchema,
   run: async ({ messages, tools, signal, clientData }) =>
     streamText({
       ...chat.toStreamTextOptions({ tools }),
       model: openrouter(MODELS[clientData?.speed ?? "default"]),
+      // Without a cap the provider default (64k) is requested per turn, and
+      // OpenRouter rejects the request outright when the credit balance can't
+      // cover the ceiling. Answers are one short paragraph; 4k is generous.
+      maxOutputTokens: 4096,
       system: systemPrompt(await coveredTickers()),
       messages,
       abortSignal: signal,

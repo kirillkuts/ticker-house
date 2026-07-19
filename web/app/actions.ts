@@ -6,12 +6,23 @@ import { z } from "zod";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { saveChat, recentChats } from "@/lib/chats";
+import { saveChat, recentChats, claimChat } from "@/lib/chats";
 import { companyOverview } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser } from "@/lib/auth";
 
-export const startChatSession = chat.createStartSessionAction("ticker-chat");
+const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
+
+// Session start is the trusted spot to bind chat → user (task 044): the
+// browser never supplies a userId; the trigger job's tools look the owner up
+// by chatId instead. requireUser also gates anonymous session starts.
+export async function startChatSession(
+  params: Parameters<typeof startTickerChatSession>[0],
+) {
+  const user = await requireUser();
+  await claimChat(user.id, params.chatId);
+  return startTickerChatSession(params);
+}
 
 // --- auth -------------------------------------------------------------------
 

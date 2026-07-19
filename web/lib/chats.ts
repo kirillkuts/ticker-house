@@ -19,6 +19,28 @@ export async function saveChat(userId: string, chatId: string, title: string, me
   );
 }
 
+// Called from the authed startChatSession action, BEFORE the agent run boots:
+// pins chat_id → user_id so the trigger job's tools can resolve the user from
+// the chatId without trusting anything browser-supplied. The placeholder row
+// is invisible in recents (empty messages) and overwritten by the first save.
+export async function claimChat(userId: string, chatId: string): Promise<void> {
+  await ensureSchema();
+  await db().query(
+    `INSERT INTO chats (chat_id, user_id, title, messages) VALUES ($1, $2, '', '[]')
+     ON CONFLICT (chat_id) DO NOTHING`,
+    [chatId, userId],
+  );
+}
+
+export async function chatOwner(chatId: string): Promise<string | null> {
+  await ensureSchema();
+  const res = await db().query<{ user_id: string }>(
+    `SELECT user_id FROM chats WHERE chat_id = $1`,
+    [chatId],
+  );
+  return res.rows[0]?.user_id ?? null;
+}
+
 export interface StoredChat {
   chatId: string;
   title: string;
@@ -51,7 +73,7 @@ export async function recentChats(userId: string, limit = 8): Promise<RecentChat
   const res = await db().query<RecentChat>(
     `SELECT chat_id AS "chatId", title, to_char(updated_at, 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
      FROM chats
-     WHERE user_id = $1
+     WHERE user_id = $1 AND messages <> '[]'
      ORDER BY updated_at DESC
      LIMIT $2`,
     [userId, limit],

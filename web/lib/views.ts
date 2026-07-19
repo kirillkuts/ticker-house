@@ -117,6 +117,46 @@ export async function singleStockPrice(ticker: string, range: Range): Promise<Si
   };
 }
 
+// Last close + change per watchlist symbol (task 044's show_watchlist). One
+// query for all symbols; a symbol with no price rows comes back with nulls
+// instead of being dropped, so the list always mirrors the watchlist.
+export interface WatchlistQuote {
+  symbol: string;
+  companyName: string | null;
+  lastClose: number | null;
+  changePct: number | null;
+}
+
+export async function watchlistQuotes(symbols: string[]): Promise<WatchlistQuote[]> {
+  if (symbols.length === 0) return [];
+  const upper = symbols.map((s) => s.toUpperCase());
+  const rows = await queryRows<{ symbol: string; companyName: string; close: number; symbolMatch: number }>(
+    `SELECT upper(s.ticker) AS symbol, s.company_name AS companyName,
+            toFloat64(p.close) AS close,
+            replaceAll(p.source_symbol, '.', '-') = upper(s.ticker) AS symbolMatch
+     FROM daily_prices AS p FINAL
+     INNER JOIN securities AS s FINAL ON s.security_id = p.security_id AND s.is_active
+     WHERE upper(s.ticker) IN ({symbols:Array(String)})
+     ORDER BY symbol, p.trade_date`,
+    { symbols: upper },
+  );
+  const bySymbol = new Map<string, { companyName: string; rows: { close: number; symbolMatch: number }[] }>();
+  for (const r of rows) {
+    if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, { companyName: r.companyName, rows: [] });
+    bySymbol.get(r.symbol)!.rows.push(r);
+  }
+  return upper.map((symbol) => {
+    const entry = bySymbol.get(symbol);
+    const closes = entry ? sanePriceRows(entry.rows).map((r) => r.close) : [];
+    return {
+      symbol,
+      companyName: entry?.companyName ?? null,
+      lastClose: closes.length ? closes[closes.length - 1] : null,
+      changePct: closes.length >= 2 ? (closes[closes.length - 1] / closes[0] - 1) * 100 : null,
+    };
+  });
+}
+
 export interface FundamentalsRow {
   periodEnd: string;
   fiscalLabel: string;
