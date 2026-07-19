@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { generateText } from "ai";
+import { generateObject } from "ai";
+import { z } from "zod";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
@@ -71,17 +72,42 @@ export async function removeDashboardWidgetAction(widgetId: string) {
 // Cmd+click "what is this?" (task 032): a one-off explanation shown in a
 // popover beside the clicked element — never posted into the chat thread, so
 // it skips the chat session entirely and calls the fast model directly.
-export async function explainElementAction(question: string): Promise<{ text: string } | { error: string }> {
+// Suggestions (task 038) become clickable chips under the answer; each must
+// be a question the chat's view tools can answer with a widget.
+export interface ExplainResult {
+  text: string;
+  suggestions: { label: string; prompt: string }[];
+}
+
+export async function explainElementAction(question: string): Promise<ExplainResult | { error: string }> {
   await requireUser();
   try {
     const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
-    const { text } = await generateText({
+    const { object } = await generateObject({
       model: openrouter("anthropic/claude-haiku-4.5"),
+      schema: z.object({
+        answer: z
+          .string()
+          .describe(
+            "The explanation, markdown. At most 3 bullet points ('- ') of one short sentence each — or 2 plain sentences — under 60 words total. Bold the defined term and the key number with **markdown**. No intro, no filler, no headers.",
+          ),
+        // No .max() constraints: OpenRouter's Azure-hosted Claude rejects
+        // maxItems/maxLength in structured-output schemas — clamped in code.
+        suggestions: z
+          .array(z.object({
+            label: z.string().describe("Short chip label under 32 chars, e.g. 'Fastest segment?'"),
+            prompt: z.string().describe("The full question to ask, naming concrete tickers/metrics so a dashboard view can answer it"),
+          }))
+          .describe("1-2 natural next questions about this element. Almost always provide at least one; return none only when truly nothing follows."),
+      }),
       system:
-        "You are TickerHouse's explain-on-click helper. The user cmd+clicked an element of a rendered stock dashboard; the question carries the element's kind, its section, and its visible text. Explain it in plain language for a non-expert, SHORT and scannable: at most 3 bullet points ('- ') of one short sentence each — or 2 plain sentences when bullets don't fit — under 60 words total. Bold the term being defined and the key number with **markdown**. No intro, no filler, no headers, no follow-up questions. Ground yourself ONLY in the provided context — never invent numbers.",
+        "You are TickerHouse's explain-on-click helper. The user cmd+clicked an element of a rendered stock dashboard; the question carries the element's kind, its section, and its visible text. Explain it in plain language for a non-expert. Ground yourself ONLY in the provided context — never invent numbers. Also suggest 1-2 follow-up questions a stock dashboard could answer with a chart or table — name the concrete tickers and metrics from the context (compare vs peers, show the trend over 5 years, rank a group). Suggest at least one whenever the element involves a company, metric or segment; return none only when truly nothing follows.",
       prompt: question.slice(0, 4000),
     });
-    return { text };
+    return {
+      text: object.answer,
+      suggestions: (object.suggestions ?? []).slice(0, 2).map((s) => ({ ...s, label: s.label.slice(0, 32) })),
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message.slice(0, 200) : "Explanation failed" };
   }

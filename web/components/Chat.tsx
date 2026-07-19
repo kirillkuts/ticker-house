@@ -213,6 +213,7 @@ interface ExplainPop {
   kind: string;
   status: "loading" | "done" | "error";
   answer: string;
+  suggestions: { label: string; prompt: string }[];
 }
 
 // One canvas per dashboard answer: the views one assistant message produced,
@@ -869,11 +870,14 @@ export function Chat({
                       kind,
                       status: "loading",
                       answer: "",
+                      suggestions: [],
                     });
                     explainElementAction(question).then((res) => {
                       setExplainPop((p) =>
                         p && p.token === token
-                          ? { ...p, status: "error" in res ? "error" : "done", answer: "error" in res ? res.error : res.text }
+                          ? "error" in res
+                            ? { ...p, status: "error", answer: res.error }
+                            : { ...p, status: "done", answer: res.text, suggestions: res.suggestions }
                           : p,
                       );
                     });
@@ -945,9 +949,29 @@ export function Chat({
         ) : explainPop.status === "error" ? (
           <div className="text-sm text-red-500">{explainPop.answer}</div>
         ) : (
-          <div className="prose-chat max-h-72 space-y-2 overflow-y-auto text-[13px] leading-relaxed">
-            <ReactMarkdown>{explainPop.answer}</ReactMarkdown>
-          </div>
+          <>
+            <div className="prose-chat max-h-72 space-y-2 overflow-y-auto text-[13px] leading-relaxed">
+              <ReactMarkdown>{explainPop.answer}</ReactMarkdown>
+            </div>
+            {explainPop.suggestions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5 border-t border-neutral-100 dark:border-neutral-800 pt-2">
+                {explainPop.suggestions.map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    title={s.prompt}
+                    onClick={() => {
+                      setExplainPop(null);
+                      ask(s.prompt, { fast: true });
+                    }}
+                    className="rounded-full border border-neutral-200 dark:border-neutral-800 px-2.5 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 transition-colors hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400"
+                  >
+                    {s.label} →
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     )}
