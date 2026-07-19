@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
 import { relativeTime } from "@/lib/format";
+import { CATEGORIES, categorySlugOf } from "@/lib/categories";
 import { companyDisplayName } from "./widgets/CompanyOverview";
 
 // Sort choice for the covered-companies grid, persisted across reloads.
@@ -59,7 +60,7 @@ function Sparkline({ closes }: { closes: number[] }) {
   );
 }
 
-function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: string) => void }) {
+export function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: string) => void }) {
   const up = t.changePct !== null && t.changePct >= 0;
   const singleDay = t.changePct === null;
   return (
@@ -159,6 +160,42 @@ export function HomeScreen({
                 <span className="shrink-0 text-xs text-neutral-400">{relativeTime(c.updatedAt)}</span>
               </a>
             ))}
+          </div>
+        </div>
+      )}
+
+      {home.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold">Browse by category</h2>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {CATEGORIES.map((c) => {
+              const members = home.filter((t) => categorySlugOf(t.ticker, t.industry) === c.slug);
+              if (members.length === 0) return null;
+              const changes = members.map((t) => t.changePct).filter((v): v is number => v !== null);
+              const avg = changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null;
+              const up = avg !== null && avg >= 0;
+              return (
+                <a
+                  key={c.slug}
+                  href={`/category/${c.slug}`}
+                  title={`${c.name}: ${c.blurb}`}
+                  className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 transition-colors hover:border-blue-400 dark:hover:border-blue-500"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-semibold whitespace-nowrap">{c.name}</span>
+                    {avg !== null && (
+                      <span
+                        className="text-xs font-medium whitespace-nowrap"
+                        style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
+                      >
+                        {up ? "▲" : "▼"} {up ? "+" : ""}{avg.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-neutral-500">{members.length} companies</div>
+                </a>
+              );
+            })}
           </div>
         </div>
       )}

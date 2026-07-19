@@ -1,5 +1,6 @@
 import { queryRows } from "./clickhouse";
-import { runMetricQuery } from "./metric-query";
+import { runMetricQuery, type MetricQueryResult } from "./metric-query";
+import { categoryBySlug, categorySlugOf } from "./categories";
 
 export const RANGES = { "7d": 7, "1m": 31, "3m": 92, "1y": 365, "5y": 1826 } as const;
 export type Range = keyof typeof RANGES;
@@ -468,6 +469,7 @@ export interface HomeTicker {
   ticker: string;
   companyName: string;
   sector: string;
+  industry: string;
   closes: number[];
   lastClose: number;
   changePct: number | null; // null when only one sane price point exists
@@ -476,8 +478,8 @@ export interface HomeTicker {
 
 export async function homeSnapshot(): Promise<HomeTicker[]> {
   const [rows, revSnapshot] = await Promise.all([
-    queryRows<{ ticker: string; companyName: string; sector: string; date: string; close: number; symbolMatch: number }>(
-      `SELECT s.ticker AS ticker, s.company_name AS companyName, s.sector AS sector,
+    queryRows<{ ticker: string; companyName: string; sector: string; industry: string; date: string; close: number; symbolMatch: number }>(
+      `SELECT s.ticker AS ticker, s.company_name AS companyName, s.sector AS sector, s.industry AS industry,
               toString(p.trade_date) AS date, toFloat64(p.close) AS close,
               replaceAll(p.source_symbol, '.', '-') = upper(s.ticker) AS symbolMatch
        FROM daily_prices AS p FINAL
@@ -502,9 +504,9 @@ export async function homeSnapshot(): Promise<HomeTicker[]> {
     ),
   ]);
   const revenueOf = new Map<string, number | null>(revSnapshot.map((r) => [r.ticker, r.revenueTtm]));
-  const byTicker = new Map<string, { companyName: string; sector: string; rows: { close: number; symbolMatch: number }[] }>();
+  const byTicker = new Map<string, { companyName: string; sector: string; industry: string; rows: { close: number; symbolMatch: number }[] }>();
   for (const r of rows) {
-    if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, { companyName: r.companyName, sector: r.sector, rows: [] });
+    if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, { companyName: r.companyName, sector: r.sector, industry: r.industry, rows: [] });
     byTicker.get(r.ticker)!.rows.push(r);
   }
   return [...byTicker.entries()]
@@ -514,6 +516,7 @@ export async function homeSnapshot(): Promise<HomeTicker[]> {
         ticker,
         companyName: v.companyName,
         sector: v.sector,
+        industry: v.industry,
         closes,
         lastClose: closes[closes.length - 1],
         changePct: closes.length >= 2 ? (closes[closes.length - 1] / closes[0] - 1) * 100 : null,
@@ -834,5 +837,65 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
       .sort((a, b) => (num(b.market_cap) ?? 0) - (num(a.market_cap) ?? 0))
       .map((r) => String(r.ticker))
       .filter((t) => t !== T),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Category page: one curated group of covered companies (task 031).
+
+export interface CategorySnapshot {
+  slug: string;
+  name: string;
+  blurb: string;
+  members: HomeTicker[]; // A–Z
+  aggregates: {
+    count: number;
+    marketCapTotal: number | null;
+    marketCapMedian: number | null;
+    avgChangePct: number | null; // two-week move, mean over members that have one
+    revenueLeaders: { ticker: string; revenue: number }[]; // top 3 by TTM revenue
+  };
+  // Cross-member comparison (market cap, P/E, net margin, revenue, growth),
+  // shaped exactly like a query_metrics result so MetricResult renders it.
+  metrics: MetricQueryResult | null;
+}
+
+export async function categorySnapshot(slug: string): Promise<CategorySnapshot | null> {
+  const cat = categoryBySlug.get(slug);
+  if (!cat) return null;
+  const home = await homeSnapshot();
+  const members = home.filter((t) => categorySlugOf(t.ticker, t.industry) === slug);
+  if (members.length === 0) return null;
+
+  const result = await runMetricQuery({
+    metrics: ["market_cap", "pe_ttm", "net_margin", "revenue", "revenue_growth_yoy"],
+    tickers: members.map((m) => m.ticker).slice(0, 50),
+    period: "latest",
+    sort: { field: "market_cap", dir: "desc" },
+    limit: 50,
+  });
+  const metrics = "error" in result ? null : result;
+
+  const caps = (metrics?.rows ?? []).map((r) => num(r.market_cap)).filter((v): v is number => v !== null);
+  const changes = members.map((m) => m.changePct).filter((v): v is number => v !== null);
+  const revenueLeaders = [...members]
+    .filter((m): m is HomeTicker & { revenueTtm: number } => m.revenueTtm !== null)
+    .sort((a, b) => b.revenueTtm - a.revenueTtm)
+    .slice(0, 3)
+    .map((m) => ({ ticker: m.ticker, revenue: m.revenueTtm }));
+
+  return {
+    slug,
+    name: cat.name,
+    blurb: cat.blurb,
+    members,
+    aggregates: {
+      count: members.length,
+      marketCapTotal: caps.length ? caps.reduce((a, b) => a + b, 0) : null,
+      marketCapMedian: median(caps),
+      avgChangePct: changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null,
+      revenueLeaders,
+    },
+    metrics,
   };
 }
