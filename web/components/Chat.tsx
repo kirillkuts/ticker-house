@@ -296,6 +296,26 @@ export function Chat({
   const [subTarget, setSubTarget] = useState<SubTarget | null>(null);
   const [explainPop, setExplainPop] = useState<ExplainPop | null>(null);
   const explainSeq = useRef(0);
+  // Escape or a click outside dismiss the popover. pointerdown (not click)
+  // so a cmd+click on another explain target closes the old one first and
+  // its own click-capture handler then opens the new one; clicks inside the
+  // popover (text selection, the X) are left alone.
+  const popOpen = explainPop !== null;
+  useEffect(() => {
+    if (!popOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExplainPop(null);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-explain-popover]")) setExplainPop(null);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [popOpen]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.metaKey) setMetaHeld(true);
