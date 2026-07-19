@@ -1,6 +1,6 @@
 # 048 — Daily event detection + daily price sync (021 phase 3)
 
-**Status:** planned
+**Status:** done
 
 Depends on 047 (filings table). Two halves: keep the data fresh daily, and compute
 per-stock events that feed the briefing agent (049).
