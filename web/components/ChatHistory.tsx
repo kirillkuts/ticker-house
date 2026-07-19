@@ -35,9 +35,12 @@ export function ChatHistory() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="Your past chats"
-        className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+        className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
       >
-        Chats
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="shrink-0">
+          <path d="M14 8a6 6 0 0 1-6 6c-1 0-2-.2-2.8-.6L2 14l.7-3A6 6 0 1 1 14 8Z" strokeLinejoin="round" />
+        </svg>
+        <span className="hidden @lg:inline">Chats</span>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 py-1 shadow-lg">

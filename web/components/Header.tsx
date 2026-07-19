@@ -11,12 +11,16 @@ function Logo() {
   );
 }
 
+// The header is a CSS container: the chat column's width changes with the
+// canvas divider, so the wordmark and action labels collapse on container
+// width (viewport breakpoints would lie here). Below @sm only the logo
+// carries the brand; action buttons show their labels from @lg up.
 export function Header({ children }: { children?: React.ReactNode }) {
   return (
-    <header className="flex items-center justify-between">
-      <a href="/" className="flex items-center gap-2.5" title="Ticker House home">
+    <header className="@container flex items-center justify-between gap-2">
+      <a href="/" className="flex shrink-0 items-center gap-2.5" title="Ticker House home">
         <Logo />
-        <span className="text-lg font-semibold tracking-tight">Ticker House</span>
+        <span className="hidden text-lg font-semibold tracking-tight @sm:inline">Ticker House</span>
       </a>
       <div className="flex items-center gap-2">{children}</div>
     </header>

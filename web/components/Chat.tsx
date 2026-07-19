@@ -517,7 +517,7 @@ export function Chat({
               onClick={() => setCanvasOpen(true)}
               className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm hover:border-blue-400"
             >
-              ▦ Canvas ({canvasParts.length})
+              ▦<span className="hidden @lg:inline"> Canvas</span> ({canvasParts.length})
             </button>
           )}
           <ChatHistory />
@@ -525,9 +525,9 @@ export function Chat({
             type="button"
             onClick={() => window.location.assign("/")}
             title="Start a fresh conversation"
-            className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+            className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600 whitespace-nowrap"
           >
-            + New chat
+            +<span className="hidden @lg:inline"> New chat</span>
           </button>
         </Header>
 
