@@ -1,6 +1,8 @@
 # 016 — Chats dropdown renders outside the viewport
 
-**Status:** todo
+**Status:** done
+
+Resolution: the panel now measures its trigger on open and anchors `left-0` when the trigger's right edge is within the panel width (18rem + margin) of the viewport's left edge, `right-0` otherwise. Works wherever the button ends up (home header, chat column at any divider position, post-015 icon-only form). Typecheck passes.
 
 From user screenshot (arrow at the open "Chats" dropdown): the dropdown panel is anchored `right-0` to the Chats button, but the button sits near the LEFT edge of the window (next to the brand), so the 18rem-wide panel extends left past the viewport edge — chat titles are clipped at the window boundary ("the full overview of MS…" rows cut off).
 

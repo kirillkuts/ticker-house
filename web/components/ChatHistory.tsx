@@ -9,8 +9,18 @@ import { relativeTime } from "@/lib/format";
 // seconds ago already shows up.
 export function ChatHistory() {
   const [open, setOpen] = useState(false);
+  // The panel is 18rem wide; anchor it to whichever side of the trigger has
+  // room so it never clips past the viewport edge (the header can sit in a
+  // narrow chat column whose position varies with the canvas divider).
+  const [alignLeft, setAlignLeft] = useState(false);
   const [chats, setChats] = useState<RecentChat[] | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  const toggle = () => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) setAlignLeft(rect.right < 18 * 16 + 16);
+    setOpen((o) => !o);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -33,7 +43,7 @@ export function ChatHistory() {
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         title="Your past chats"
         className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
       >
@@ -43,7 +53,11 @@ export function ChatHistory() {
         <span className="hidden @lg:inline">Chats</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+        <div
+          className={`absolute top-full z-30 mt-1 w-72 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 py-1 shadow-lg ${
+            alignLeft ? "left-0" : "right-0"
+          }`}
+        >
           {chats === null ? (
             <div className="px-3 py-2 text-sm text-neutral-400">loading…</div>
           ) : chats.length === 0 ? (
