@@ -888,7 +888,7 @@ export function Chat({
                 return (
                   <div key={i} className="relative group">
                     {isViewPart(part) && (
-                      <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="absolute right-3 top-0 z-10 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
                           onClick={(e) => openSaveMenu(ref, part, e)}
@@ -1072,7 +1072,7 @@ export function Chat({
                       </span>
                     </div>
                   )}
-                  <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="absolute right-3 top-0 z-10 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
                       onClick={(e) => openSaveMenu(ref, part, e)}

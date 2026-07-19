@@ -54,7 +54,7 @@ export function DashboardGrid({ widgets }: { widgets: DashboardWidgetData[] }) {
                   setRemoved((prev) => new Set(prev).add(w.widgetId));
                   removeDashboardWidgetAction(w.widgetId).catch(() => {});
                 }}
-                className="absolute right-3 top-5 z-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 hover:border-red-400 hover:text-red-500"
+                className="absolute right-3 top-0 z-10 -translate-y-1/2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 hover:border-red-400 hover:text-red-500"
               >
                 remove
               </button>
