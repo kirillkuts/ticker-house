@@ -14,6 +14,7 @@ import { Fundamentals } from "./widgets/Fundamentals";
 import { MetricResult } from "./widgets/MetricResult";
 import { CompanyOverview } from "./widgets/CompanyOverview";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
+import { Header } from "./Header";
 import { HomeScreen } from "./HomeScreen";
 
 type Part = ChatUIMessage["parts"][number];
@@ -369,7 +370,10 @@ export function Chat({
 
   if (isEmpty) {
     return (
-      <div className="flex min-h-screen px-4">
+      <div className="flex min-h-screen flex-col px-4">
+        <div className="mx-auto w-full max-w-2xl pt-4">
+          <Header />
+        </div>
         <HomeScreen home={home} recent={recent} onAsk={(text) => sendMessage({ text })} composer={composer} />
       </div>
     );
@@ -379,28 +383,25 @@ export function Chat({
     <AskContext.Provider value={{ ask, busy: status === "submitted" || status === "streaming" }}>
     <div className="flex min-h-screen">
       <div className={`mx-auto p-4 flex flex-col gap-4 min-h-screen w-full ${showCanvas ? "min-w-0 flex-1 max-w-none" : "max-w-3xl"}`}>
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Ticker House</h1>
-          <div className="flex items-center gap-2">
-            {!showCanvas && canvasParts.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setCanvasOpen(true)}
-                className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm hover:border-blue-400"
-              >
-                ▦ Canvas ({canvasParts.length})
-              </button>
-            )}
+        <Header>
+          {!showCanvas && canvasParts.length > 0 && (
             <button
               type="button"
-              onClick={() => window.location.assign("/")}
-              title="Start a fresh conversation"
-              className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+              onClick={() => setCanvasOpen(true)}
+              className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm hover:border-blue-400"
             >
-              + New chat
+              ▦ Canvas ({canvasParts.length})
             </button>
-          </div>
-        </div>
+          )}
+          <button
+            type="button"
+            onClick={() => window.location.assign("/")}
+            title="Start a fresh conversation"
+            className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+          >
+            + New chat
+          </button>
+        </Header>
 
         <div className="flex-1 space-y-4">
           {messages.map((m) => (

@@ -87,17 +87,6 @@ function TickerCard({ t, onAsk }: { t: HomeTicker; onAsk: (text: string) => void
   );
 }
 
-function Logo() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden>
-      <rect x="1" y="1" width="26" height="26" rx="7" fill="var(--viz-1)" opacity="0.12" />
-      <rect x="6" y="14" width="3.5" height="8" rx="1.5" fill="var(--viz-1)" />
-      <rect x="12.25" y="9" width="3.5" height="13" rx="1.5" fill="var(--viz-1)" />
-      <rect x="18.5" y="5" width="3.5" height="17" rx="1.5" fill="var(--viz-1)" />
-    </svg>
-  );
-}
-
 export function HomeScreen({
   home,
   recent = [],
@@ -112,10 +101,6 @@ export function HomeScreen({
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-8 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-2.5">
-          <Logo />
-          <span className="text-xl font-semibold tracking-tight">Ticker House</span>
-        </div>
         <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
           Ask about a stock.
           <br />
