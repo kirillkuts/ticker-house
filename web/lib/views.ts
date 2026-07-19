@@ -286,6 +286,12 @@ const REV_PRIORITY = [
   "Revenues",
   "SalesRevenueNet",
 ];
+
+// Filings sometimes carry glued camel-case names, in the label field too
+// ("EMEASegment", "FamilyOfApps"). Split at case boundaries — but only after
+// a 2+ capital run for the CAPS→Word rule, so "IPhone" stays intact.
+const humanizeMember = (m: string) =>
+  m.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]{2,})([A-Z][a-z])/g, "$1 $2");
 const MAX_SEGMENTS = 7; // fixed-order palette has 8 hues; the rest folds into "Other"
 
 // Some filers tag parent aggregates alongside the leaves on the same axis
@@ -372,7 +378,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
     return { error: `No segment revenue data for ${ticker} (only balance-sheet segment facts are available).` };
   const years = periodEnds.map((pe) => `FY${pe.slice(0, 4)}`);
 
-  const labelOf = new Map(segFacts.map((r) => [r.member, r.label || r.member]));
+  const labelOf = new Map(segFacts.map((r) => [r.member, humanizeMember(r.label || r.member)]));
   const latest = periodEnds[periodEnds.length - 1];
   let members = [...new Set([...segRevenue.keys()].map((k) => k.split("|")[0]))]
     .sort((a, b) => (segRevenue.get(`${b}|${latest}`)?.value ?? 0) - (segRevenue.get(`${a}|${latest}`)?.value ?? 0));
@@ -384,7 +390,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
 
   const series = (member: string): SegmentSeries => ({
     member,
-    label: labelOf.get(member) ?? member,
+    label: labelOf.get(member) ?? humanizeMember(member),
     revenue: periodEnds.map((pe) => segRevenue.get(`${member}|${pe}`)?.value ?? null),
     opIncome: periodEnds.map((pe) => segOpIncome.get(`${member}|${pe}`) ?? null),
   });
@@ -405,7 +411,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
   ];
 
   const geoRevenue = pickRevenue(facts.filter((r) => r.axis === "geography"));
-  const geoLabelOf = new Map(facts.filter((r) => r.axis === "geography").map((r) => [r.member, r.label || r.member]));
+  const geoLabelOf = new Map(facts.filter((r) => r.axis === "geography").map((r) => [r.member, humanizeMember(r.label || r.member)]));
   let geoMembers = [...new Set([...geoRevenue.keys()].map((k) => k.split("|")[0]))]
     .sort((a, b) => (geoRevenue.get(`${b}|${latest}`)?.value ?? 0) - (geoRevenue.get(`${a}|${latest}`)?.value ?? 0));
   // Filers often add ISO-country facts (US, CN) on top of their own region
@@ -424,7 +430,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
   geoMembers = pruneParentAggregates(geoMembers, geoVal, latestTotal).slice(0, MAX_SEGMENTS + 1);
   const geography = geoMembers.map((m) => ({
     member: m,
-    label: geoLabelOf.get(m) ?? m,
+    label: geoLabelOf.get(m) ?? humanizeMember(m),
     revenue: periodEnds.map((pe) => geoRevenue.get(`${m}|${pe}`)?.value ?? null),
   }));
 
@@ -435,7 +441,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
   let products: SegmentBreakdownData["products"] = [];
   if (axisUsed === "business") {
     const prodRevenue = pickRevenue(facts.filter((r) => r.axis === "product"));
-    const prodLabelOf = new Map(facts.filter((r) => r.axis === "product").map((r) => [r.member, r.label || r.member]));
+    const prodLabelOf = new Map(facts.filter((r) => r.axis === "product").map((r) => [r.member, humanizeMember(r.label || r.member)]));
     let prodMembers = [...new Set([...prodRevenue.keys()].map((k) => k.split("|")[0]))]
       .sort((a, b) => (prodRevenue.get(`${b}|${latest}`)?.value ?? 0) - (prodRevenue.get(`${a}|${latest}`)?.value ?? 0));
     prodMembers = pruneParentAggregates(
@@ -444,7 +450,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
     if (prodMembers.length >= 2)
       products = prodMembers.map((m) => ({
         member: m,
-        label: prodLabelOf.get(m) ?? m,
+        label: prodLabelOf.get(m) ?? humanizeMember(m),
         revenue: periodEnds.map((pe) => prodRevenue.get(`${m}|${pe}`)?.value ?? null),
       }));
   }

@@ -65,7 +65,7 @@ export function SegmentBreakdown({ data }: { data: SegmentBreakdownData }) {
         <>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
             {data.segments.map((s, i) => (
-              <span key={s.member} className="inline-flex items-center gap-1.5">
+              <span key={s.member} data-explain="legend entry" className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: HUES[i % HUES.length] }} />
                 <span className="text-neutral-500">{s.label}</span>
                 <span className="font-medium">{fmtMoney(s.revenue[lastIdx])}</span>
@@ -133,7 +133,7 @@ export function SegmentBreakdown({ data }: { data: SegmentBreakdownData }) {
           </ResponsiveContainer>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
             {products.map((p, i) => (
-              <span key={p.member} className="inline-flex items-center gap-1.5">
+              <span key={p.member} data-explain="legend entry" className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: HUES[i % HUES.length] }} />
                 <span className="text-neutral-500">{p.label}</span>
                 <span className="font-medium">{fmtMoney(p.revenue[lastIdx])}</span>
@@ -160,7 +160,7 @@ export function SegmentBreakdown({ data }: { data: SegmentBreakdownData }) {
           </ResponsiveContainer>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
             {data.geography.map((g, i) => (
-              <span key={g.member} className="inline-flex items-center gap-1.5">
+              <span key={g.member} data-explain="legend entry" className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: HUES[i % HUES.length] }} />
                 <span className="text-neutral-500">{g.label}</span>
               </span>
