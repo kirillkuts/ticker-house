@@ -248,7 +248,7 @@ export async function summarizeInterestAction(
   try {
     const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
     const { object } = await generateObject({
-      model: openrouter("anthropic/claude-sonnet-5"),
+      model: openrouter("anthropic/claude-haiku-4.5"),
       // No length constraints in the schema — OpenRouter's Azure-hosted
       // Claude rejects maxItems/maxLength; clamped in code below.
       schema: z.object({

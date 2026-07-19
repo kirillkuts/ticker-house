@@ -387,8 +387,10 @@ export type ChatUIMessage = InferChatUIMessageFromTools<typeof tools>;
 // tools, so a small model suffices); typed questions get the default model.
 // Unknown or missing metadata falls back to the default.
 const MODELS = {
+  // Both tiers point at Haiku for now (credit conservation); the speed
+  // plumbing stays so the default tier can move back up later.
   fast: "anthropic/claude-haiku-4.5",
-  default: "anthropic/claude-sonnet-5",
+  default: "anthropic/claude-haiku-4.5",
 } as const;
 
 const clientDataSchema = z
