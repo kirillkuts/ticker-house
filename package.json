@@ -8,7 +8,8 @@
   "scripts": {
     "sync:securities": "tsx src/cli/sync-securities.ts",
     "sync:prices": "tsx src/cli/sync-prices.ts",
-    "sync:financials": "tsx src/cli/sync-financials.ts"
+    "sync:financials": "tsx src/cli/sync-financials.ts",
+    "sync:segments": "tsx src/cli/sync-segments.ts"
   },
   "keywords": [],
   "author": "",

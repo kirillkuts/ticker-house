@@ -1,6 +1,8 @@
 // v2: concept fallback applied per period (a company that switches revenue
 // tags mid-history keeps its full series) instead of one concept per field.
-export const MAPPING_VERSION = "v2";
+// v3: deeper expense lines (S&M / G&A split, D&A, intangibles amortization,
+// advertising). Companies reporting combined SG&A leave the split fields null.
+export const MAPPING_VERSION = "v3";
 
 export type FieldKind = "duration" | "instant";
 
@@ -18,6 +20,11 @@ export const FIELD_DEFS: FieldDef[] = [
   { field: "gross_profit", kind: "duration", unit: "USD", concepts: ["GrossProfit"] },
   { field: "research_and_development", kind: "duration", unit: "USD", concepts: ["ResearchAndDevelopmentExpense"] },
   { field: "selling_general_admin", kind: "duration", unit: "USD", concepts: ["SellingGeneralAndAdministrativeExpense"] },
+  { field: "selling_and_marketing", kind: "duration", unit: "USD", concepts: ["SellingAndMarketingExpense", "SellingExpense", "MarketingExpense"] },
+  { field: "general_and_admin", kind: "duration", unit: "USD", concepts: ["GeneralAndAdministrativeExpense"] },
+  { field: "depreciation_amortization", kind: "duration", unit: "USD", concepts: ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "Depreciation"] },
+  { field: "amortization_of_intangibles", kind: "duration", unit: "USD", concepts: ["AmortizationOfIntangibleAssets"] },
+  { field: "advertising_expense", kind: "duration", unit: "USD", concepts: ["AdvertisingExpense"] },
   { field: "operating_expenses", kind: "duration", unit: "USD", concepts: ["OperatingExpenses"] },
   { field: "operating_income", kind: "duration", unit: "USD", concepts: ["OperatingIncomeLoss"] },
   { field: "interest_expense", kind: "duration", unit: "USD", concepts: ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt"] },

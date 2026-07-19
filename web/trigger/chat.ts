@@ -3,7 +3,7 @@ import { streamText, stepCountIs, tool } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
-import { singleStockPrice, fundamentals, companyOverview, RANGES } from "../lib/views";
+import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, RANGES } from "../lib/views";
 import { METRICS, METRIC_KEYS } from "../lib/metric-registry";
 import { runMetricQuery } from "../lib/metric-query";
 
@@ -33,6 +33,17 @@ rankings, and multi-stock comparisons ("which stocks...", "compare X and Y",
 narrowly about price action or statement history. P/E and other "latest"
 metrics are TTM-based; some metrics can be NULL for a stock (missing source
 data), and filters exclude NULL rows.
+
+Spending & segments: for "where does X spend its money", "what are X's
+expenses / costs made of", "why is the margin 40%", use
+show_expense_breakdown — it decomposes revenue into cost of revenue, R&D,
+sales & marketing, G&A and operating income. Some companies (NVDA, TSLA,
+LLY) only report a combined SG&A line, and banks/insurers (JPM, BRK-B) have
+no standard expense lines at all — the tool says so; fall back to
+show_fundamentals there. For "revenue by segment / division / region",
+"how big is AWS / Reality Labs", use show_segments — segment names are
+as-reported by each company and only annual data is shown. JPM has no
+segment revenue loaded.
 
 View-first rule: if a question CAN be answered with a view tool, you MUST
 call one — never put numbers in plain text that a view could render.
@@ -91,6 +102,23 @@ export const tools = {
       periodType: z.enum(["quarter", "annual"]).describe("Quarterly or annual statements"),
     }),
     execute: async ({ ticker, periodType }) => fundamentals(ticker, periodType),
+  }),
+  show_expense_breakdown: tool({
+    description:
+      "Render an expense-composition dashboard for one stock: stacked revenue decomposition (cost of revenue, R&D, sales & marketing, G&A, other, operating income), operating-margin trend, and a latest-period table with % of revenue. Use for 'where does X spend its money', 'what are X's expenses made of', 'what's behind the margin'. Only for the covered fundamentals universe; financial-sector names may not have standard expense lines.",
+    inputSchema: z.object({
+      ticker: z.string().describe("Stock ticker, e.g. META"),
+      periodType: z.enum(["quarter", "annual"]).describe("Quarterly or annual; default annual for composition questions"),
+    }),
+    execute: async ({ ticker, periodType }) => expenseBreakdown(ticker, periodType),
+  }),
+  show_segments: tool({
+    description:
+      "Render a segment dashboard for one stock: annual revenue by business segment (stacked), operating income by segment, and revenue by geography. Segment names are as-reported (e.g. Meta's Family of Apps vs Reality Labs, Amazon's AWS). Use for 'revenue by segment/division/region', 'how big is AWS', 'is Reality Labs losing money'. Only for the covered fundamentals universe.",
+    inputSchema: z.object({
+      ticker: z.string().describe("Stock ticker, e.g. META"),
+    }),
+    execute: async ({ ticker }) => segmentBreakdown(ticker),
   }),
   query_metrics: tool({
     description: [

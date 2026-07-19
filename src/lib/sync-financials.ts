@@ -75,6 +75,17 @@ CREATE TABLE IF NOT EXISTS financial_periods
 ENGINE = ReplacingMergeTree(version)
 ORDER BY (security_id, period_type, period_end)`,
   });
+
+  // CREATE IF NOT EXISTS doesn't extend an existing table; add any columns
+  // introduced by newer FIELD_DEFS versions.
+  for (const f of FIELD_COLUMNS) {
+    const type = ["basic_eps", "diluted_eps"].includes(f)
+      ? "Nullable(Decimal(18, 6))"
+      : ["basic_weighted_shares", "diluted_weighted_shares"].includes(f)
+        ? "Nullable(UInt64)"
+        : "Nullable(Decimal(24, 2))";
+    await ch.command({ query: `ALTER TABLE financial_periods ADD COLUMN IF NOT EXISTS ${f} ${type} AFTER currency` });
+  }
 }
 
 function periodToRow(p: FinancialPeriod) {

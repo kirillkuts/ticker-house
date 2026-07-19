@@ -166,6 +166,262 @@ export async function fundamentals(
 }
 
 // ---------------------------------------------------------------------------
+// Expense breakdown: where the revenue goes, line by line.
+
+export interface ExpensePeriodRow {
+  periodEnd: string;
+  fiscalLabel: string;
+  revenue: number | null;
+  costOfRevenue: number | null;
+  researchAndDevelopment: number | null;
+  sellingAndMarketing: number | null;
+  generalAndAdmin: number | null;
+  sellingGeneralAdmin: number | null; // combined SG&A — the fallback when the split is not reported
+  otherOperating: number | null; // derived remainder between gross profit and operating income
+  operatingIncome: number | null;
+  opMarginPct: number | null;
+  depreciationAmortization: number | null;
+  shareBasedCompensation: number | null;
+}
+
+export interface ExpenseBreakdownData {
+  ticker: string;
+  companyName: string;
+  periodType: "quarter" | "annual";
+  // True when the company reports selling/marketing and G&A separately.
+  hasSplit: boolean;
+  rows: ExpensePeriodRow[];
+}
+
+export async function expenseBreakdown(
+  ticker: string,
+  periodType: "quarter" | "annual",
+  limit = 8,
+): Promise<ExpenseBreakdownData | { error: string }> {
+  const sec = await resolveSecurity(ticker);
+  if (!sec) return { error: `Unknown ticker: ${ticker}` };
+
+  const f = (col: string) => `toFloat64OrNull(toString(${col}))`;
+  const rows = await queryRows<Omit<ExpensePeriodRow, "otherOperating">>(
+    `SELECT toString(period_end) AS periodEnd,
+            if({pt:String} = 'annual',
+               concat('FY', toString(toYear(period_end))),
+               formatDateTime(period_end, '%b %Y')) AS fiscalLabel,
+            ${f("revenue")} AS revenue,
+            ${f("cost_of_revenue")} AS costOfRevenue,
+            ${f("research_and_development")} AS researchAndDevelopment,
+            ${f("selling_and_marketing")} AS sellingAndMarketing,
+            ${f("general_and_admin")} AS generalAndAdmin,
+            ${f("selling_general_admin")} AS sellingGeneralAdmin,
+            ${f("operating_income")} AS operatingIncome,
+            if(revenue IS NOT NULL AND revenue != 0 AND operating_income IS NOT NULL,
+               toFloat64(operating_income) / toFloat64(revenue) * 100, NULL) AS opMarginPct,
+            ${f("depreciation_amortization")} AS depreciationAmortization,
+            ${f("share_based_compensation")} AS shareBasedCompensation
+     FROM financial_periods FINAL
+     WHERE security_id = {sid:UInt32} AND period_type = {pt:String}
+     ORDER BY period_end DESC
+     LIMIT {lim:UInt32}`,
+    { sid: sec.security_id, pt: periodType, lim: limit },
+  );
+  if (rows.length === 0) return { error: `No fundamentals loaded for ${ticker}` };
+
+  const hasSplit = rows.some((r) => r.sellingAndMarketing !== null && r.generalAndAdmin !== null);
+  const full: ExpensePeriodRow[] = rows.map((r) => {
+    const sgna = hasSplit && r.sellingAndMarketing !== null && r.generalAndAdmin !== null
+      ? r.sellingAndMarketing + r.generalAndAdmin
+      : r.sellingGeneralAdmin;
+    const other =
+      r.revenue !== null && r.costOfRevenue !== null && r.operatingIncome !== null && sgna !== null
+        ? r.revenue - r.costOfRevenue - (r.researchAndDevelopment ?? 0) - sgna - r.operatingIncome
+        : null;
+    return { ...r, otherOperating: other };
+  });
+
+  // Nothing below the revenue line means the composition view can't say
+  // anything (banks/insurers) — steer to the plain fundamentals view instead.
+  const anyExpenseLine = full.some(
+    (r) => r.costOfRevenue !== null || r.researchAndDevelopment !== null ||
+           r.sellingAndMarketing !== null || r.generalAndAdmin !== null || r.sellingGeneralAdmin !== null,
+  );
+  if (!anyExpenseLine)
+    return { error: `${ticker.toUpperCase()} doesn't report standard operating expense lines (financial-sector statements). Use show_fundamentals instead.` };
+
+  return { ticker: ticker.toUpperCase(), companyName: sec.company_name, periodType, hasSplit, rows: full.reverse() };
+}
+
+// ---------------------------------------------------------------------------
+// Segment breakdown: revenue / operating income by business segment + geography.
+
+export interface SegmentSeries {
+  member: string;
+  label: string;
+  revenue: (number | null)[]; // aligned to years
+  opIncome: (number | null)[];
+}
+
+export interface SegmentBreakdownData {
+  ticker: string;
+  companyName: string;
+  // TSLA-style filers report their split on the product axis instead of the
+  // business-segments axis; the widget presents both as "segments".
+  axisUsed: "business" | "product";
+  years: string[]; // e.g. "FY2025", oldest first
+  segments: SegmentSeries[];
+  geography: { member: string; label: string; revenue: (number | null)[] }[];
+  singleSegment: boolean;
+  // False when members still sum to well over consolidated revenue (BRK-style
+  // tagging) — stacking would misrepresent the total, render grouped bars.
+  stackable: boolean;
+}
+
+const REV_PRIORITY = [
+  "RevenueFromContractWithCustomerExcludingAssessedTax",
+  "RevenueFromContractWithCustomerIncludingAssessedTax",
+  "Revenues",
+  "SalesRevenueNet",
+];
+const MAX_SEGMENTS = 7; // fixed-order palette has 8 hues; the rest folds into "Other"
+
+export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdownData | { error: string }> {
+  const sec = await resolveSecurity(ticker);
+  if (!sec) return { error: `Unknown ticker: ${ticker}` };
+
+  const [facts, consolidated] = await Promise.all([
+    queryRows<{
+      axis: string; member: string; label: string; concept: string; periodEnd: string; value: number;
+    }>(
+      `SELECT axis, member, member_label AS label, concept,
+              toString(period_end) AS periodEnd, toFloat64(value) AS value
+       FROM financial_segments FINAL
+       WHERE security_id = {sid:UInt32} AND qtrs = 4
+       ORDER BY period_end`,
+      { sid: sec.security_id },
+    ),
+    queryRows<{ periodEnd: string; revenue: number }>(
+      `SELECT toString(period_end) AS periodEnd, toFloat64(revenue) AS revenue
+       FROM financial_periods FINAL
+       WHERE security_id = {sid:UInt32} AND period_type = 'annual' AND revenue IS NOT NULL`,
+      { sid: sec.security_id },
+    ),
+  ]);
+  const totalRevenue = new Map(consolidated.map((r) => [r.periodEnd, r.revenue]));
+  if (facts.length === 0)
+    return { error: `No segment data loaded for ${ticker} — the company may report a single segment, or segment ingestion doesn't cover it.` };
+
+  const axisUsed: "business" | "product" = facts.some((r) => r.axis === "business") ? "business" : "product";
+
+  // One revenue number per (member, period): highest-priority concept wins.
+  const pickRevenue = (rows: typeof facts) => {
+    const best = new Map<string, { rank: number; value: number }>();
+    for (const r of rows) {
+      const rank = REV_PRIORITY.indexOf(r.concept);
+      if (rank === -1) continue;
+      const key = `${r.member}|${r.periodEnd}`;
+      const prev = best.get(key);
+      if (!prev || rank < prev.rank) best.set(key, { rank, value: r.value });
+    }
+    return best;
+  };
+
+  const segFacts = facts.filter((r) => r.axis === axisUsed);
+  const segRevenue = pickRevenue(segFacts);
+  const segOpIncome = new Map(
+    segFacts.filter((r) => r.concept === "OperatingIncomeLoss").map((r) => [`${r.member}|${r.periodEnd}`, r.value]),
+  );
+
+  // Last 5 fiscal years that have any segment revenue.
+  const periodEnds = [...new Set([...segRevenue.keys()].map((k) => k.split("|")[1]))].sort().slice(-5);
+  if (periodEnds.length === 0)
+    return { error: `No segment revenue data for ${ticker} (only balance-sheet segment facts are available).` };
+  const years = periodEnds.map((pe) => `FY${pe.slice(0, 4)}`);
+
+  const labelOf = new Map(segFacts.map((r) => [r.member, r.label || r.member]));
+  const latest = periodEnds[periodEnds.length - 1];
+  let members = [...new Set([...segRevenue.keys()].map((k) => k.split("|")[0]))]
+    .sort((a, b) => (segRevenue.get(`${b}|${latest}`)?.value ?? 0) - (segRevenue.get(`${a}|${latest}`)?.value ?? 0));
+
+  // Some filers tag parent aggregates alongside the leaves on the same axis
+  // (TSLA: "Sales And Services" ⊃ "Automotive Revenues" ⊃ "Automotive Sales"),
+  // which would double-count in a stack. While the stack overshoots
+  // consolidated revenue, remove members that equal the sum of a subset of
+  // the other members — that is what makes something a parent, not its size.
+  const latestTotal = totalRevenue.get(latest);
+  if (latestTotal) {
+    const val = (m: string) => segRevenue.get(`${m}|${latest}`)?.value ?? 0;
+    const sumLatest = () => members.reduce((s, m) => s + val(m), 0);
+    const isSubsetSum = (vals: number[], target: number, tol: number, picked = 0, from = 0): boolean => {
+      if (picked >= 2 && Math.abs(target) <= tol) return true;
+      if (from >= vals.length || target < -tol) return false;
+      return isSubsetSum(vals, target - vals[from], tol, picked + 1, from + 1) ||
+             isSubsetSum(vals, target, tol, picked, from + 1);
+    };
+    while (members.length > 2 && sumLatest() > 1.05 * latestTotal) {
+      const aggregate = members.find((m) => {
+        const target = val(m);
+        if (target <= 0) return false;
+        const others = members.filter((x) => x !== m).map(val).filter((v) => v > 0).sort((a, b) => b - a);
+        return isSubsetSum(others, target, 0.005 * target);
+      });
+      if (!aggregate) break; // no detectable parent — leave the data as reported
+      members = members.filter((m) => m !== aggregate);
+    }
+  }
+  const latestSum = members.reduce((s, m) => s + (segRevenue.get(`${m}|${latest}`)?.value ?? 0), 0);
+  const stackable = !latestTotal || latestSum <= 1.1 * latestTotal;
+
+  const series = (member: string): SegmentSeries => ({
+    member,
+    label: labelOf.get(member) ?? member,
+    revenue: periodEnds.map((pe) => segRevenue.get(`${member}|${pe}`)?.value ?? null),
+    opIncome: periodEnds.map((pe) => segOpIncome.get(`${member}|${pe}`) ?? null),
+  });
+  const head = members.slice(0, MAX_SEGMENTS).map(series);
+  const tail = members.slice(MAX_SEGMENTS).map(series);
+  const sumRow = (xs: (number | null)[][], i: number): number | null => {
+    const vals = xs.map((s) => s[i]).filter((v): v is number => v !== null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  };
+  const segments = tail.length === 0 ? head : [
+    ...head,
+    {
+      member: "__other__",
+      label: `Other (${tail.length})`,
+      revenue: periodEnds.map((_, i) => sumRow(tail.map((s) => s.revenue), i)),
+      opIncome: periodEnds.map((_, i) => sumRow(tail.map((s) => s.opIncome), i)),
+    },
+  ];
+
+  const geoRevenue = pickRevenue(facts.filter((r) => r.axis === "geography"));
+  const geoLabelOf = new Map(facts.filter((r) => r.axis === "geography").map((r) => [r.member, r.label || r.member]));
+  let geoMembers = [...new Set([...geoRevenue.keys()].map((k) => k.split("|")[0]))]
+    .sort((a, b) => (geoRevenue.get(`${b}|${latest}`)?.value ?? 0) - (geoRevenue.get(`${a}|${latest}`)?.value ?? 0));
+  // Filers often add ISO-country facts (US, CN) on top of their own region
+  // members (USCanada, Europe); countries are subsets of regions and would
+  // double-count in the stack. Keep the regions when both kinds exist.
+  const isCountry = (m: string) => /^[A-Z]{2}$/.test(m);
+  if (geoMembers.some(isCountry) && geoMembers.some((m) => !isCountry(m)))
+    geoMembers = geoMembers.filter((m) => !isCountry(m));
+  geoMembers = geoMembers.slice(0, MAX_SEGMENTS + 1);
+  const geography = geoMembers.map((m) => ({
+    member: m,
+    label: geoLabelOf.get(m) ?? m,
+    revenue: periodEnds.map((pe) => geoRevenue.get(`${m}|${pe}`)?.value ?? null),
+  }));
+
+  return {
+    ticker: ticker.toUpperCase(),
+    companyName: sec.company_name,
+    axisUsed,
+    years,
+    segments,
+    geography,
+    singleSegment: segments.length <= 1,
+    stackable,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Home screen snapshot: one card per covered company (has fundamentals).
 
 export interface HomeTicker {

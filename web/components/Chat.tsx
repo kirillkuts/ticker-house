@@ -5,7 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
-import type { SingleStockPriceData, FundamentalsData, CompanyOverviewData, HomeTicker } from "@/lib/views";
+import type { SingleStockPriceData, FundamentalsData, CompanyOverviewData, ExpenseBreakdownData, SegmentBreakdownData, HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
 import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview } from "@/app/actions";
 import type { MetricQueryResult } from "@/lib/metric-query";
@@ -13,6 +13,8 @@ import { SingleStockPrice } from "./widgets/SingleStockPrice";
 import { Fundamentals } from "./widgets/Fundamentals";
 import { MetricResult } from "./widgets/MetricResult";
 import { CompanyOverview } from "./widgets/CompanyOverview";
+import { ExpenseBreakdown } from "./widgets/ExpenseBreakdown";
+import { SegmentBreakdown } from "./widgets/SegmentBreakdown";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { Header } from "./Header";
 import { ChatHistory } from "./ChatHistory";
@@ -57,6 +59,18 @@ function ToolPart({ part }: { part: Part }) {
       return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
     return <Fundamentals data={out} />;
   }
+  if (part.type === "tool-show_expense_breakdown" && part.state === "output-available") {
+    const out = part.output as ExpenseBreakdownData | { error: string };
+    if ("error" in out)
+      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
+    return <ExpenseBreakdown data={out} />;
+  }
+  if (part.type === "tool-show_segments" && part.state === "output-available") {
+    const out = part.output as SegmentBreakdownData | { error: string };
+    if ("error" in out)
+      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
+    return <SegmentBreakdown data={out} />;
+  }
   if (part.type === "tool-query_metrics" && part.state === "output-available") {
     const out = part.output as MetricQueryResult | { error: string };
     if ("error" in out) return <ToolError error={out.error} />;
@@ -84,6 +98,8 @@ const TOOL_LABELS: Record<string, string> = {
   "tool-show_company_overview": "Company overview",
   "tool-show_price_chart": "Price chart",
   "tool-show_fundamentals": "Fundamentals",
+  "tool-show_expense_breakdown": "Expense breakdown",
+  "tool-show_segments": "Segments",
   "tool-query_metrics": "Metrics",
 };
 
@@ -153,6 +169,8 @@ const BIG_VIEW_TYPES = new Set([
   "tool-show_company_overview",
   "tool-show_price_chart",
   "tool-show_fundamentals",
+  "tool-show_expense_breakdown",
+  "tool-show_segments",
 ]);
 
 // A view on the canvas, identified by its position in the message list so we
