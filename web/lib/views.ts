@@ -269,6 +269,10 @@ export interface SegmentBreakdownData {
   years: string[]; // e.g. "FY2025", oldest first
   segments: SegmentSeries[];
   geography: { member: string; label: string; revenue: (number | null)[] }[];
+  // Product / service revenue split, shown in addition to the segments when
+  // the reportable segments themselves are regions (AAPL: segments = Americas,
+  // Europe… while products = iPhone, Mac, Services…). Empty otherwise.
+  products: { member: string; label: string; revenue: (number | null)[] }[];
   singleSegment: boolean;
   // False when members still sum to well over consolidated revenue (BRK-style
   // tagging) — stacking would misrepresent the total, render grouped bars.
@@ -282,6 +286,34 @@ const REV_PRIORITY = [
   "SalesRevenueNet",
 ];
 const MAX_SEGMENTS = 7; // fixed-order palette has 8 hues; the rest folds into "Other"
+
+// Some filers tag parent aggregates alongside the leaves on the same axis
+// (TSLA: "Sales And Services" ⊃ "Automotive Revenues" ⊃ "Automotive Sales";
+// AAPL products: "Product" ⊃ iPhone/Mac/iPad/Wearables), which would
+// double-count in a stack. While the members overshoot the consolidated
+// total, remove any member that equals the sum of a subset of the others —
+// that is what makes something a parent, not its size.
+function pruneParentAggregates(members: string[], val: (m: string) => number, total: number | undefined): string[] {
+  if (!total) return members;
+  const isSubsetSum = (vals: number[], target: number, tol: number, picked = 0, from = 0): boolean => {
+    if (picked >= 2 && Math.abs(target) <= tol) return true;
+    if (from >= vals.length || target < -tol) return false;
+    return isSubsetSum(vals, target - vals[from], tol, picked + 1, from + 1) ||
+           isSubsetSum(vals, target, tol, picked, from + 1);
+  };
+  let out = members;
+  while (out.length > 2 && out.reduce((s, m) => s + val(m), 0) > 1.05 * total) {
+    const aggregate = out.find((m) => {
+      const target = val(m);
+      if (target <= 0) return false;
+      const others = out.filter((x) => x !== m).map(val).filter((v) => v > 0).sort((a, b) => b - a);
+      return isSubsetSum(others, target, 0.005 * target);
+    });
+    if (!aggregate) break; // no detectable parent — leave the data as reported
+    out = out.filter((m) => m !== aggregate);
+  }
+  return out;
+}
 
 export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdownData | { error: string }> {
   const sec = await resolveSecurity(ticker);
@@ -305,7 +337,10 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
       { sid: sec.security_id },
     ),
   ]);
-  const totalRevenue = new Map(consolidated.map((r) => [r.periodEnd, r.revenue]));
+  // Keyed by year-month: FSDS rounds period ends to month end (2025-09-30)
+  // while financial_periods keeps the real fiscal date (AAPL: 2025-09-27), so
+  // exact-date joins silently miss and disable the parent-aggregate pruning.
+  const totalRevenue = new Map(consolidated.map((r) => [r.periodEnd.slice(0, 7), r.revenue]));
   if (facts.length === 0)
     return { error: `No segment data loaded for ${ticker} — the company may report a single segment, or segment ingestion doesn't cover it.` };
 
@@ -341,32 +376,8 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
   let members = [...new Set([...segRevenue.keys()].map((k) => k.split("|")[0]))]
     .sort((a, b) => (segRevenue.get(`${b}|${latest}`)?.value ?? 0) - (segRevenue.get(`${a}|${latest}`)?.value ?? 0));
 
-  // Some filers tag parent aggregates alongside the leaves on the same axis
-  // (TSLA: "Sales And Services" ⊃ "Automotive Revenues" ⊃ "Automotive Sales"),
-  // which would double-count in a stack. While the stack overshoots
-  // consolidated revenue, remove members that equal the sum of a subset of
-  // the other members — that is what makes something a parent, not its size.
-  const latestTotal = totalRevenue.get(latest);
-  if (latestTotal) {
-    const val = (m: string) => segRevenue.get(`${m}|${latest}`)?.value ?? 0;
-    const sumLatest = () => members.reduce((s, m) => s + val(m), 0);
-    const isSubsetSum = (vals: number[], target: number, tol: number, picked = 0, from = 0): boolean => {
-      if (picked >= 2 && Math.abs(target) <= tol) return true;
-      if (from >= vals.length || target < -tol) return false;
-      return isSubsetSum(vals, target - vals[from], tol, picked + 1, from + 1) ||
-             isSubsetSum(vals, target, tol, picked, from + 1);
-    };
-    while (members.length > 2 && sumLatest() > 1.05 * latestTotal) {
-      const aggregate = members.find((m) => {
-        const target = val(m);
-        if (target <= 0) return false;
-        const others = members.filter((x) => x !== m).map(val).filter((v) => v > 0).sort((a, b) => b - a);
-        return isSubsetSum(others, target, 0.005 * target);
-      });
-      if (!aggregate) break; // no detectable parent — leave the data as reported
-      members = members.filter((m) => m !== aggregate);
-    }
-  }
+  const latestTotal = totalRevenue.get(latest.slice(0, 7));
+  members = pruneParentAggregates(members, (m) => segRevenue.get(`${m}|${latest}`)?.value ?? 0, latestTotal);
   const latestSum = members.reduce((s, m) => s + (segRevenue.get(`${m}|${latest}`)?.value ?? 0), 0);
   const stackable = !latestTotal || latestSum <= 1.1 * latestTotal;
 
@@ -398,16 +409,44 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
     .sort((a, b) => (geoRevenue.get(`${b}|${latest}`)?.value ?? 0) - (geoRevenue.get(`${a}|${latest}`)?.value ?? 0));
   // Filers often add ISO-country facts (US, CN) on top of their own region
   // members (USCanada, Europe); countries are subsets of regions and would
-  // double-count in the stack. Keep the regions when both kinds exist.
+  // double-count in the stack. Keep the regions when both kinds exist — but
+  // only if the regions alone still cover the total. AAPL's geography axis is
+  // US + CN + OtherCountries (the countries ARE the partition); dropping them
+  // there would leave a lone "OtherCountries" bar.
+  const geoVal = (m: string) => geoRevenue.get(`${m}|${latest}`)?.value ?? 0;
   const isCountry = (m: string) => /^[A-Z]{2}$/.test(m);
-  if (geoMembers.some(isCountry) && geoMembers.some((m) => !isCountry(m)))
-    geoMembers = geoMembers.filter((m) => !isCountry(m));
-  geoMembers = geoMembers.slice(0, MAX_SEGMENTS + 1);
+  if (geoMembers.some(isCountry) && geoMembers.some((m) => !isCountry(m))) {
+    const regionsOnly = geoMembers.filter((m) => !isCountry(m));
+    const covers = !latestTotal || regionsOnly.reduce((s, m) => s + geoVal(m), 0) >= 0.8 * latestTotal;
+    if (covers) geoMembers = regionsOnly;
+  }
+  geoMembers = pruneParentAggregates(geoMembers, geoVal, latestTotal).slice(0, MAX_SEGMENTS + 1);
   const geography = geoMembers.map((m) => ({
     member: m,
     label: geoLabelOf.get(m) ?? m,
     revenue: periodEnds.map((pe) => geoRevenue.get(`${m}|${pe}`)?.value ?? null),
   }));
+
+  // Product / service split, surfaced when the reportable segments are NOT
+  // already the product axis (AAPL: segments are regions; the product axis is
+  // where iPhone / Mac / Services live). Parent aggregates ("Product" =
+  // iPhone + Mac + iPad + Wearables) are pruned the same way as segments.
+  let products: SegmentBreakdownData["products"] = [];
+  if (axisUsed === "business") {
+    const prodRevenue = pickRevenue(facts.filter((r) => r.axis === "product"));
+    const prodLabelOf = new Map(facts.filter((r) => r.axis === "product").map((r) => [r.member, r.label || r.member]));
+    let prodMembers = [...new Set([...prodRevenue.keys()].map((k) => k.split("|")[0]))]
+      .sort((a, b) => (prodRevenue.get(`${b}|${latest}`)?.value ?? 0) - (prodRevenue.get(`${a}|${latest}`)?.value ?? 0));
+    prodMembers = pruneParentAggregates(
+      prodMembers, (m) => prodRevenue.get(`${m}|${latest}`)?.value ?? 0, latestTotal,
+    ).slice(0, MAX_SEGMENTS + 1);
+    if (prodMembers.length >= 2)
+      products = prodMembers.map((m) => ({
+        member: m,
+        label: prodLabelOf.get(m) ?? m,
+        revenue: periodEnds.map((pe) => prodRevenue.get(`${m}|${pe}`)?.value ?? null),
+      }));
+  }
 
   return {
     ticker: ticker.toUpperCase(),
@@ -416,6 +455,7 @@ export async function segmentBreakdown(ticker: string): Promise<SegmentBreakdown
     years,
     segments,
     geography,
+    products,
     singleSegment: segments.length <= 1,
     stackable,
   };

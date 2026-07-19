@@ -51,7 +51,11 @@ no standard expense lines at all — the tool says so; fall back to
 show_fundamentals there. For "revenue by segment / division / region",
 "how big is AWS / Reality Labs", use show_segments — segment names are
 as-reported by each company and only annual data is shown. JPM has no
-segment revenue loaded.
+segment revenue loaded. Some companies' reportable segments are
+geographic (AAPL: Americas, Europe…); the result then also carries a
+"products" split (iPhone, Mac, Services…) — never claim such a company
+"doesn't break out product lines"; ground your text in whichever axis
+answers the question.
 
 View-first rule: if a question CAN be answered with a view tool, you MUST
 call one — never put numbers in plain text that a view could render.

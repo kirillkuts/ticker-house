@@ -43,6 +43,9 @@ export function SegmentBreakdown({ data }: { data: SegmentBreakdownData }) {
   const opSeries = data.segments.filter((s) => s.opIncome.some((v) => v !== null));
   const opRows = pivot(data.years, opSeries.map((s) => ({ label: s.label, values: s.opIncome })));
   const geoRows = pivot(data.years, data.geography.map((g) => ({ label: g.label, values: g.revenue })));
+  // Views persisted before the product split existed lack the field.
+  const products = data.products ?? [];
+  const prodRows = pivot(data.years, products.map((p) => ({ label: p.label, values: p.revenue })));
   const lastIdx = data.years.length - 1;
 
   return (
@@ -111,6 +114,33 @@ export function SegmentBreakdown({ data }: { data: SegmentBreakdownData }) {
             </div>
           )}
         </>
+      )}
+
+      {products.length > 0 && (
+        <div>
+          <div className="text-xs text-neutral-500 mb-1">Revenue by product & service line (as reported)</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={prodRows} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="25%">
+              <CartesianGrid stroke="var(--viz-grid)" vertical={false} />
+              <XAxis dataKey="year" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => axisMoney(v)} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, name) => [fmtMoney(Number(v)), name]} />
+              {products.map((p, i) => (
+                <Bar key={p.member} isAnimationActive={false} dataKey={p.label} stackId="prod"
+                     fill={HUES[i % HUES.length]} stroke="var(--background)" strokeWidth={1} maxBarSize={36} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
+            {products.map((p, i) => (
+              <span key={p.member} className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: HUES[i % HUES.length] }} />
+                <span className="text-neutral-500">{p.label}</span>
+                <span className="font-medium">{fmtMoney(p.revenue[lastIdx])}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       )}
 
       {data.geography.length > 0 && (
