@@ -132,7 +132,7 @@ export function HomeScreen({
             ))}
           </div>
           <p className="text-center text-[11px] text-neutral-400">
-            {home.length} large caps · fundamentals since 2008 · prices Jul 1–16, 2026
+            {home.length} large caps · SEC fundamentals back to 2008
           </p>
         </div>
       )}

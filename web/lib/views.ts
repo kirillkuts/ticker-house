@@ -27,6 +27,9 @@ export interface SingleStockPriceData {
     changePct: number;
     lastClose: number;
   };
+  // Whether this security is in the fundamentals universe — decides which
+  // follow-up affordances the widget may offer.
+  hasFundamentals: boolean;
 }
 
 // A security can carry price rows from several source symbols: old tickers
@@ -51,8 +54,13 @@ async function resolveSecurity(ticker: string) {
     company_name: string;
     sector: string;
     industry: string;
+    description: string;
+    headquarters: string;
+    website: string;
+    employee_count: number;
   }>(
-    `SELECT security_id, company_name, sector, industry
+    `SELECT security_id, company_name, sector, industry,
+            description, headquarters, website, employee_count
      FROM securities FINAL
      WHERE is_active AND upper(ticker) = upper({ticker:String})
      LIMIT 1`,
@@ -65,18 +73,24 @@ export async function singleStockPrice(ticker: string, range: Range): Promise<Si
   const sec = await resolveSecurity(ticker);
   if (!sec) return { error: `Unknown ticker: ${ticker}` };
 
-  const raw = await queryRows<PricePoint & { symbolMatch: number }>(
-    `SELECT toString(trade_date) AS date,
-            toFloat64(open) AS open, toFloat64(high) AS high,
-            toFloat64(low) AS low, toFloat64(close) AS close,
-            toFloat64(volume) AS volume,
-            ${SYMBOL_MATCH} AS symbolMatch
-     FROM daily_prices FINAL
-     WHERE security_id = {sid:UInt32}
-       AND trade_date >= today() - INTERVAL {days:UInt32} DAY
-     ORDER BY trade_date`,
-    { sid: sec.security_id, days: RANGES[range], tk: ticker.toUpperCase() },
-  );
+  const [raw, funda] = await Promise.all([
+    queryRows<PricePoint & { symbolMatch: number }>(
+      `SELECT toString(trade_date) AS date,
+              toFloat64(open) AS open, toFloat64(high) AS high,
+              toFloat64(low) AS low, toFloat64(close) AS close,
+              toFloat64(volume) AS volume,
+              ${SYMBOL_MATCH} AS symbolMatch
+       FROM daily_prices FINAL
+       WHERE security_id = {sid:UInt32}
+         AND trade_date >= today() - INTERVAL {days:UInt32} DAY
+       ORDER BY trade_date`,
+      { sid: sec.security_id, days: RANGES[range], tk: ticker.toUpperCase() },
+    ),
+    queryRows<{ n: number }>(
+      `SELECT count() AS n FROM financial_periods WHERE security_id = {sid:UInt32}`,
+      { sid: sec.security_id },
+    ),
+  ]);
   const prices = sanePriceRows(raw).map<PricePoint>(
     ({ date, open, high, low, close, volume }) => ({ date, open, high, low, close, volume }),
   );
@@ -98,6 +112,7 @@ export async function singleStockPrice(ticker: string, range: Range): Promise<Si
       changePct: (last.close / first.open - 1) * 100,
       lastClose: last.close,
     },
+    hasFundamentals: Number(funda[0]?.n ?? 0) > 0,
   };
 }
 
@@ -254,6 +269,12 @@ export interface CompanyOverviewData {
   companyName: string;
   sector: string;
   industry: string;
+  about: {
+    description: string;
+    headquarters: string;
+    website: string;
+    employees: number | null;
+  };
   priceWindow: { from: string; to: string };
   prices: { date: string; close: number }[];
   kpis: { lastClose: number; changePct: number | null; high: number; low: number };
@@ -263,6 +284,9 @@ export interface CompanyOverviewData {
   annual: OverviewAnnualRow[];
   quarterly: OverviewQuarterRow[];
   peersCount: number;
+  // The rest of the covered universe, sorted by market cap — for "compare
+  // with" affordances in the widget.
+  peerTickers: string[];
 }
 
 const num = (v: unknown): number | null => {
@@ -442,6 +466,12 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
     companyName: sec.company_name,
     sector: sec.sector,
     industry: sec.industry,
+    about: {
+      description: sec.description,
+      headquarters: sec.headquarters,
+      website: sec.website,
+      employees: sec.employee_count > 0 ? sec.employee_count : null,
+    },
     priceWindow: { from: first.date, to: last.date },
     prices,
     kpis: {
@@ -480,5 +510,9 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
     annual: annual.reverse(),
     quarterly: quarterly.reverse(),
     peersCount: peers.length,
+    peerTickers: [...peers]
+      .sort((a, b) => (num(b.market_cap) ?? 0) - (num(a.market_cap) ?? 0))
+      .map((r) => String(r.ticker))
+      .filter((t) => t !== T),
   };
 }

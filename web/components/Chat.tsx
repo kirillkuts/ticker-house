@@ -12,30 +12,59 @@ import { SingleStockPrice } from "./widgets/SingleStockPrice";
 import { Fundamentals } from "./widgets/Fundamentals";
 import { MetricResult } from "./widgets/MetricResult";
 import { CompanyOverview } from "./widgets/CompanyOverview";
+import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { HomeScreen } from "./HomeScreen";
 
 type Part = ChatUIMessage["parts"][number];
 
+// A failed view must not be a dead end: name the problem, offer a way out.
+function ToolError({ error, ticker }: { error: string; ticker?: string }) {
+  const tk = ticker?.toUpperCase();
+  return (
+    <div className="my-2 space-y-1 rounded-xl border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/30 p-3">
+      <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+      <FollowUps
+        asks={[
+          ...(tk && (error.includes("show_price_chart") || error.includes("No fundamentals loaded"))
+            ? [{ label: `${tk} price chart`, prompt: `Show ${tk}'s price chart for the last month` }]
+            : []),
+          { label: "What's covered?", prompt: "Which companies do you cover with full fundamentals?" },
+        ]}
+      />
+    </div>
+  );
+}
+
 function ToolPart({ part }: { part: Part }) {
   if (part.type === "tool-show_company_overview" && part.state === "output-available") {
     const out = part.output as CompanyOverviewData | { error: string };
-    if ("error" in out) return <div className="text-sm text-red-500">{out.error}</div>;
+    if ("error" in out)
+      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
     return <CompanyOverview data={out} />;
   }
   if (part.type === "tool-show_price_chart" && part.state === "output-available") {
     const out = part.output as SingleStockPriceData | { error: string };
-    if ("error" in out) return <div className="text-sm text-red-500">{out.error}</div>;
+    if ("error" in out)
+      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
     return <SingleStockPrice data={out} />;
   }
   if (part.type === "tool-show_fundamentals" && part.state === "output-available") {
     const out = part.output as FundamentalsData | { error: string };
-    if ("error" in out) return <div className="text-sm text-red-500">{out.error}</div>;
+    if ("error" in out)
+      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
     return <Fundamentals data={out} />;
   }
   if (part.type === "tool-query_metrics" && part.state === "output-available") {
     const out = part.output as MetricQueryResult | { error: string };
-    if ("error" in out) return <div className="text-sm text-red-500">{out.error}</div>;
+    if ("error" in out) return <ToolError error={out.error} />;
     return <MetricResult data={out} />;
+  }
+  if (part.type === "tool-suggest_follow_ups") {
+    // Model-generated next questions, rendered as the same chips widgets use.
+    if (part.state !== "output-available") return null;
+    const out = part.output as { suggestions?: { label: string; prompt: string }[] } | undefined;
+    if (!out?.suggestions?.length) return null;
+    return <div className="my-2"><FollowUps asks={out.suggestions} /></div>;
   }
   if (part.type === "tool-edit_canvas") {
     return part.state === "output-available" ? (
@@ -79,7 +108,11 @@ const CANVAS_BLOCK_RE = /\n*\[canvas\][\s\S]*$/;
 
 // Any view-producing tool part, regardless of completion state.
 function isViewToolPart(part: Part): boolean {
-  return part.type.startsWith("tool-") && part.type !== "tool-edit_canvas";
+  return (
+    part.type.startsWith("tool-") &&
+    part.type !== "tool-edit_canvas" &&
+    part.type !== "tool-suggest_follow_ups"
+  );
 }
 
 // A tool part whose output failed (view tools return { error } instead of throwing).
@@ -238,17 +271,37 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
   const showCanvas = canvasOpen && canvasParts.length > 0;
   const isEmpty = messages.length === 0;
 
+  // A question sent from a chip halfway up the transcript would otherwise
+  // stream its answer out of view — jump to the bottom on every new question.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const seenUserMsgs = useRef(0);
+  useEffect(() => {
+    const userCount = messages.filter((m) => m.role === "user").length;
+    if (userCount > seenUserMsgs.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    seenUserMsgs.current = userCount;
+  }, [messages]);
+
+  // Model-suggested follow-ups are "what next?" prompts: only the latest
+  // answer's suggestions are current; older ones are noise.
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
+
+  // Every outgoing question — typed or clicked — carries the [canvas] block so
+  // the model always knows what is pinned.
+  const ask = (text: string) => {
+    const canvasBlock = canvasParts.length
+      ? "\n\n[canvas]\n" +
+        canvasParts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
+      : "";
+    sendMessage({ text: text + canvasBlock });
+  };
+
   const composer = (
     <form
       className={isEmpty ? "flex w-full gap-2" : "sticky bottom-4 flex gap-2"}
       onSubmit={(e) => {
         e.preventDefault();
         if (!input.trim()) return;
-        const canvasBlock = canvasParts.length
-          ? "\n\n[canvas]\n" +
-            canvasParts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
-          : "";
-        sendMessage({ text: input + canvasBlock });
+        ask(input);
         setInput("");
       }}
     >
@@ -282,19 +335,30 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
   }
 
   return (
+    <AskContext.Provider value={{ ask, busy: status === "submitted" || status === "streaming" }}>
     <div className="flex min-h-screen">
       <div className={`mx-auto p-4 flex flex-col gap-4 min-h-screen w-full ${showCanvas ? "min-w-0 flex-1 max-w-none" : "max-w-3xl"}`}>
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Ticker House</h1>
-          {!showCanvas && canvasParts.length > 0 && (
+          <div className="flex items-center gap-2">
+            {!showCanvas && canvasParts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCanvasOpen(true)}
+                className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm hover:border-blue-400"
+              >
+                ▦ Canvas ({canvasParts.length})
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setCanvasOpen(true)}
-              className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm hover:border-blue-400"
+              onClick={() => window.location.assign("/")}
+              title="Start a fresh conversation"
+              className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
             >
-              ▦ Canvas ({canvasParts.length})
+              + New chat
             </button>
-          )}
+          </div>
         </div>
 
         <div className="flex-1 space-y-4">
@@ -303,7 +367,25 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
               <div className="text-xs uppercase tracking-wide text-neutral-400 mb-1">
                 {m.role === "user" ? "you" : "ticker house"}
               </div>
-              {m.parts.map((part, i) => {
+              {(() => {
+                // Suggested follow-ups are the closing line of an answer. When
+                // the model answers, suggests, then keeps talking, that tail
+                // text is restating (both live tests confirmed) — drop it and
+                // render the chips last. If no text preceded the suggestion,
+                // keep everything: hiding a whole answer would be worse.
+                const suggestIdx = m.parts.findIndex((p) => p.type === "tool-suggest_follow_ups");
+                const answeredBefore =
+                  suggestIdx > -1 &&
+                  m.parts.some((p, j) => j < suggestIdx && p.type === "text" && p.text.trim() !== "");
+                return m.parts
+                  .map((part, i) => ({ part, i }))
+                  .filter(({ part, i }) => !(answeredBefore && i > suggestIdx && part.type === "text"))
+                  .sort(
+                    (a, b) =>
+                      Number(a.part.type === "tool-suggest_follow_ups") -
+                      Number(b.part.type === "tool-suggest_follow_ups"),
+                  );
+              })().map(({ part, i }) => {
                 if (part.type === "text") {
                   const text = m.role === "user" ? part.text.replace(CANVAS_BLOCK_RE, "") : part.text;
                   return (
@@ -312,6 +394,7 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
                     </div>
                   );
                 }
+                if (part.type === "tool-suggest_follow_ups" && m.id !== lastAssistantId) return null;
                 const ref = { msgId: m.id, partIdx: i };
                 const onCanvas = canvasKeys.has(refKey(ref));
                 // A view lives in exactly one place: on the canvas it is
@@ -354,6 +437,7 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
               })}
             </div>
           ))}
+          <div ref={bottomRef} />
         </div>
 
         {composer}
@@ -413,5 +497,6 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
         </aside>
       )}
     </div>
+    </AskContext.Provider>
   );
 }

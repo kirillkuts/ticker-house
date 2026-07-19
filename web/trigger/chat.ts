@@ -16,10 +16,13 @@ tools. NEVER invent numbers; the tools return the real data and the UI
 renders it. After a tool call, write ONE short paragraph of takeaways based
 strictly on the tool result — no restating every number.
 
-Coverage: prices exist only for 2026-07-01..2026-07-16 (use range "7d" or
-"1m"). Fundamentals and metrics (back to ~2008) exist only for: AAPL MSFT
-NVDA META BRK-B GOOGL AMZN TSLA JPM LLY. For anything outside coverage, say
-so briefly instead of calling a tool.
+Coverage: price charts work for nearly ALL US tickers, but only for
+2026-07-01..2026-07-16 (use range "7d" or "1m"). Fundamentals, metrics and
+the company overview (back to ~2008) exist only for: AAPL MSFT NVDA META
+BRK-B GOOGL AMZN TSLA JPM LLY. When asked about a stock outside that list,
+say fundamentals aren't covered AND offer/show its price chart — do not
+claim you have no price data. Only refuse outright when even a price chart
+can't work.
 
 Tool choice: for broad single-stock questions ("tell me about X", "overview
 of X", "how is X doing overall", "is X a good company"), use
@@ -30,6 +33,14 @@ rankings, and multi-stock comparisons ("which stocks...", "compare X and Y",
 narrowly about price action or statement history. P/E and other "latest"
 metrics are TTM-based; some metrics can be NULL for a stock (missing source
 data), and filters exclude NULL rows.
+
+Follow-ups: after your text answer is complete, ALWAYS call
+suggest_follow_ups exactly once with 2-3 short, concrete next questions the
+user would plausibly ask, each answerable with the available views and
+covered tickers. Labels under 32 characters; prompts are full questions.
+Never suggest anything outside coverage. It must be the LAST thing in your
+response: write no text after it — no "let me know", no closing line; the
+buttons are the closing line.
 
 Canvas: the UI has a side panel ("canvas") where views are pinned. If the
 user message ends with a [canvas] block, that is its current content — never
@@ -57,7 +68,7 @@ export const tools = {
   }),
   show_price_chart: tool({
     description:
-      "Render a price dashboard for one stock: OHLC chart, volume, and KPI tiles. Use for any question about a stock's price, performance, or recent movement.",
+      "Render a price dashboard for one stock: OHLC chart, volume, and KPI tiles. Use for any question about a stock's price, performance, or recent movement. Works for nearly all US tickers, not just the fundamentals universe.",
     inputSchema: z.object({
       ticker: z.string().describe("Stock ticker, e.g. NVDA"),
       range: z.enum(Object.keys(RANGES) as [string, ...string[]]).describe("Time range"),
@@ -105,6 +116,20 @@ export const tools = {
     }),
     execute: async (spec) => runMetricQuery(spec),
   }),
+  suggest_follow_ups: tool({
+    description:
+      "Offer the user 2-3 clickable follow-up questions, shown as buttons under your answer. Call this exactly once at the END of every response, after any view tools and after your text. Each prompt must be answerable with the available views AND the coverage limits: only the covered tickers (AAPL MSFT NVDA META BRK-B GOOGL AMZN TSLA JPM LLY), price questions only about the two covered weeks (never '1-year price'), metrics/fundamentals back to ~2008.",
+    inputSchema: z.object({
+      suggestions: z
+        .array(z.object({
+          label: z.string().max(40).describe("Short button label, e.g. 'Compare with MSFT'"),
+          prompt: z.string().describe("The full question to send when clicked"),
+        }))
+        .min(2)
+        .max(4),
+    }),
+    execute: async (s) => s,
+  }),
   edit_canvas: tool({
     description:
       "Edit the user's canvas — the dashboard panel beside the chat that holds pinned views. The current canvas contents, when any, are listed at the end of the user message in a [canvas] block as 'id — description' lines. Use remove/clear to drop views the user no longer wants, and add_new_views:true to pin the views you created earlier in THIS response onto the canvas (call it AFTER the view tools). The client applies the change; this tool only records the instruction.",
@@ -129,6 +154,6 @@ export const tickerChat = chat.agent({
       system: SYSTEM,
       messages,
       abortSignal: signal,
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(7),
     }),
 });

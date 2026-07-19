@@ -1,4 +1,6 @@
-export const MAPPING_VERSION = "v1";
+// v2: concept fallback applied per period (a company that switches revenue
+// tags mid-history keeps its full series) instead of one concept per field.
+export const MAPPING_VERSION = "v2";
 
 export type FieldKind = "duration" | "instant";
 

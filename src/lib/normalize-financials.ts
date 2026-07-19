@@ -37,9 +37,16 @@ function classify(f: RawFact): Kind | null {
   return null;
 }
 
-/** Latest filing wins for a (concept-priority) slot. */
-function pick(facts: RawFact[]): RawFact | undefined {
-  return facts.sort((a, b) => b.filed_date.localeCompare(a.filed_date))[0];
+/** Best fact for a slot: highest-priority concept first, then latest filing. */
+function pick(facts: RawFact[], concepts?: readonly string[]): RawFact | undefined {
+  return [...facts].sort((a, b) => {
+    if (concepts) {
+      const pa = concepts.indexOf(a.concept);
+      const pb = concepts.indexOf(b.concept);
+      if (pa !== pb) return pa - pb;
+    }
+    return b.filed_date.localeCompare(a.filed_date);
+  })[0];
 }
 
 export function assemblePeriods(security_id: number, facts: RawFact[], version: number): FinancialPeriod[] {
@@ -49,6 +56,11 @@ export function assemblePeriods(security_id: number, facts: RawFact[], version: 
   const instant = new Map<string, Map<string, RawFact[]>>();
   const defByField = new Map(FIELD_DEFS.map((d) => [d.field, d]));
 
+  // Index facts from EVERY concept of a field, not just the first one with
+  // data: companies switch tags over time (NVDA stopped filing
+  // RevenueFromContractWithCustomer… after FY2022 and uses Revenues since),
+  // so committing to one concept for all periods drops whole years. Concept
+  // priority is applied per period, inside pick().
   for (const def of FIELD_DEFS) {
     for (const concept of def.concepts) {
       const matches = facts.filter((f) => f.concept === concept && f.unit === def.unit.replace("USD/shares", "USD/shares"));
@@ -70,7 +82,6 @@ export function assemblePeriods(security_id: number, facts: RawFact[], version: 
         }
         duration.set(def.field, kinds);
       }
-      break; // priority: first concept with any data wins for this field
     }
   }
 
@@ -84,7 +95,7 @@ export function assemblePeriods(security_id: number, facts: RawFact[], version: 
 
   for (const type of ["quarter", "annual"] as const) {
     for (const [end, factList] of skeletons.get(type) ?? []) {
-      const anchor = pick(factList)!;
+      const anchor = pick(factList, defByField.get(skeletonField)!.concepts)!;
       const key = `${type}:${end}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -98,17 +109,21 @@ export function assemblePeriods(security_id: number, facts: RawFact[], version: 
         let derived: string | null = null;
 
         if (def.kind === "instant") {
-          fact = pick(instant.get(def.field)?.get(end) ?? []);
+          fact = pick(instant.get(def.field)?.get(end) ?? [], def.concepts);
         } else {
-          fact = pick(duration.get(def.field)?.get(type)?.get(end) ?? []);
+          fact = pick(duration.get(def.field)?.get(type)?.get(end) ?? [], def.concepts);
           if (!fact && type === "quarter" && !NON_ADDITIVE.has(def.field)) {
             // Cash-flow style YTD differencing: YTD(end) - YTD(previous quarter end).
             const ytds = duration.get(def.field)?.get("ytd");
-            const ytdNow = pick(ytds?.get(end) ?? []) ?? pick(duration.get(def.field)?.get("annual")?.get(end) ?? []);
+            const ytdNow = pick(ytds?.get(end) ?? [], def.concepts) ?? pick(duration.get(def.field)?.get("annual")?.get(end) ?? [], def.concepts);
             if (ytdNow && ytdNow.period_start) {
+              // Differencing only makes sense within one concept: two tags can
+              // measure slightly different totals, and mixing them fabricates
+              // a quarter.
               const prev = [...(ytds?.values() ?? []), ...(duration.get(def.field)?.get("quarter")?.values() ?? [])]
-                .map((l) => pick(l))
+                .map((l) => pick(l, def.concepts))
                 .filter((f): f is RawFact => !!f && !!f.period_start)
+                .filter((f) => f.concept === ytdNow.concept)
                 .filter((f) => f.period_start! >= ytdNow.period_start! && f.period_end < end)
                 .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
               if (prev && prev.period_start === ytdNow.period_start) {

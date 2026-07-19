@@ -33,6 +33,8 @@ export interface MetricQueryResult {
   spec: MetricQuerySpec;
   columns: MetricColumn[];
   rows: Record<string, string | number | null>[];
+  // For the model, not the widget: explains gaps so the answer can mention them.
+  note?: string;
 }
 
 const MAX_LIMIT = 50;
@@ -51,14 +53,17 @@ q AS (
   LIMIT 4 BY security_id
 ),
 ttm AS (
+  -- A TTM sum is only honest when all 4 quarters carry the column; recent
+  -- ingests miss e.g. revenue, and summing 2 of 4 quarters would silently
+  -- understate. countIf = 4 turns partial coverage into NULL instead.
   SELECT
     security_id,
-    if(count() = 4, sum(toFloat64OrNull(toString(revenue))), NULL)           AS revenue_ttm,
-    if(count() = 4, sum(toFloat64OrNull(toString(gross_profit))), NULL)      AS gross_profit_ttm,
-    if(count() = 4, sum(toFloat64OrNull(toString(operating_income))), NULL)  AS operating_income_ttm,
-    if(count() = 4, sum(toFloat64OrNull(toString(net_income))), NULL)        AS net_income_ttm,
-    if(count() = 4, sum(toFloat64OrNull(toString(free_cash_flow))), NULL)    AS fcf_ttm,
-    if(count() = 4, sum(toFloat64OrNull(toString(operating_cash_flow))), NULL) AS ocf_ttm,
+    if(countIf(toFloat64OrNull(toString(revenue)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(revenue))), NULL)           AS revenue_ttm,
+    if(countIf(toFloat64OrNull(toString(gross_profit)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(gross_profit))), NULL)      AS gross_profit_ttm,
+    if(countIf(toFloat64OrNull(toString(operating_income)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(operating_income))), NULL)  AS operating_income_ttm,
+    if(countIf(toFloat64OrNull(toString(net_income)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(net_income))), NULL)        AS net_income_ttm,
+    if(countIf(toFloat64OrNull(toString(free_cash_flow)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(free_cash_flow))), NULL)    AS fcf_ttm,
+    if(countIf(toFloat64OrNull(toString(operating_cash_flow)) IS NOT NULL) = 4, sum(toFloat64OrNull(toString(operating_cash_flow))), NULL) AS ocf_ttm,
     argMaxIf(toFloat64OrNull(toString(total_assets)), period_end, total_assets IS NOT NULL)           AS total_assets_i,
     argMaxIf(toFloat64OrNull(toString(total_liabilities)), period_end, total_liabilities IS NOT NULL) AS total_liabilities_i,
     argMaxIf(toFloat64OrNull(toString(shareholders_equity)), period_end, shareholders_equity IS NOT NULL) AS equity_i,
@@ -71,20 +76,47 @@ ttm AS (
   GROUP BY security_id
 ),
 a AS (
-  SELECT * FROM financial_periods FINAL
+  SELECT security_id, period_end,
+         toFloat64OrNull(toString(revenue))     AS rev,
+         toFloat64OrNull(toString(diluted_eps)) AS eps
+  FROM financial_periods FINAL
   WHERE period_type = 'annual'
   ORDER BY period_end DESC
-  LIMIT 2 BY security_id
+  LIMIT 6 BY security_id
+),
+-- YoY growth from the latest two annual rows where the column is non-NULL
+-- (recent filings can miss revenue). Guards: the two rows must be ~1 year
+-- apart, and the pair must not be stale vs the security's newest annual row —
+-- otherwise NULL beats quoting multi-year-old "growth" as current.
+amax AS (SELECT security_id, max(period_end) AS max_end FROM a GROUP BY security_id),
+rev2 AS (
+  SELECT security_id, period_end, rev FROM a WHERE rev IS NOT NULL
+  ORDER BY period_end DESC LIMIT 2 BY security_id
+),
+eps2 AS (
+  SELECT security_id, period_end, eps FROM a WHERE eps IS NOT NULL
+  ORDER BY period_end DESC LIMIT 2 BY security_id
 ),
 yoy AS (
   SELECT
-    security_id,
-    if(count() = 2, argMax(toFloat64OrNull(toString(revenue)), period_end), NULL)     AS rev_latest,
-    if(count() = 2, argMin(toFloat64OrNull(toString(revenue)), period_end), NULL)     AS rev_prior,
-    if(count() = 2, argMax(toFloat64OrNull(toString(diluted_eps)), period_end), NULL) AS eps_latest,
-    if(count() = 2, argMin(toFloat64OrNull(toString(diluted_eps)), period_end), NULL) AS eps_prior
-  FROM a
-  GROUP BY security_id
+    am.security_id AS security_id,
+    if(dateDiff('day', r.rev_end, am.max_end) <= 430, r.rev_latest, NULL) AS rev_latest,
+    if(dateDiff('day', r.rev_end, am.max_end) <= 430, r.rev_prior, NULL)  AS rev_prior,
+    if(dateDiff('day', e.eps_end, am.max_end) <= 430, e.eps_latest, NULL) AS eps_latest,
+    if(dateDiff('day', e.eps_end, am.max_end) <= 430, e.eps_prior, NULL)  AS eps_prior
+  FROM amax AS am
+  LEFT JOIN (
+    SELECT security_id, max(period_end) AS rev_end,
+           if(count() = 2 AND dateDiff('day', min(period_end), max(period_end)) <= 430, argMax(rev, period_end), NULL) AS rev_latest,
+           if(count() = 2 AND dateDiff('day', min(period_end), max(period_end)) <= 430, argMin(rev, period_end), NULL) AS rev_prior
+    FROM rev2 GROUP BY security_id
+  ) AS r ON r.security_id = am.security_id
+  LEFT JOIN (
+    SELECT security_id, max(period_end) AS eps_end,
+           if(count() = 2 AND dateDiff('day', min(period_end), max(period_end)) <= 430, argMax(eps, period_end), NULL) AS eps_latest,
+           if(count() = 2 AND dateDiff('day', min(period_end), max(period_end)) <= 430, argMin(eps, period_end), NULL) AS eps_prior
+    FROM eps2 GROUP BY security_id
+  ) AS e ON e.security_id = am.security_id
 ),
 px AS (
   -- One close per security. A security can have price rows under several
@@ -146,12 +178,19 @@ function buildTimeseries(spec: MetricQuerySpec) {
   const periodType = spec.period === "annual_5y" ? "annual" : "quarter";
   const perTicker = spec.period === "annual_5y" ? 5 : 8;
 
+  // fiscal_period/fiscal_year are stamped by whichever filing (re)stated the
+  // period, so they duplicate and even carry year 0. period_end is the truth.
+  const labelExpr =
+    periodType === "annual"
+      ? "concat('FY', toString(toYear(p.period_end)))"
+      : "formatDateTime(p.period_end, '%b %Y')";
+
   const sql = `
 SELECT * FROM (
   SELECT
     s.ticker AS ticker,
     toString(p.period_end) AS period_end,
-    concat(p.fiscal_period, ' ', toString(p.fiscal_year)) AS fiscal_label,
+    ${labelExpr} AS fiscal_label,
     ${selectCols}
   FROM financial_periods AS p FINAL
   INNER JOIN (
@@ -201,13 +240,32 @@ export async function runMetricQuery(
   }
 
   try {
-    const rows = await queryRows<Record<string, string | number | null>>(built.sql, built.params);
+    let rows = await queryRows<Record<string, string | number | null>>(built.sql, built.params);
+    // History rows where every requested metric is NULL (partially ingested
+    // filings) are pure noise in a chart or table — drop them, but tell the
+    // model so it can explain the gap instead of ignoring it.
+    let note: string | undefined;
+    if (spec.period !== "latest") {
+      const dropped = new Map<string, number>();
+      rows = rows.filter((r) => {
+        if (built.keys.some((k) => r[k] !== null)) return true;
+        const t = String(r.ticker);
+        dropped.set(t, (dropped.get(t) ?? 0) + 1);
+        return false;
+      });
+      if (dropped.size)
+        note =
+          "Periods omitted because the source filing carries no data for the requested metrics: " +
+          [...dropped.entries()].map(([t, n]) => `${t} (${n})`).join(", ") +
+          ". Mention this gap in your answer.";
+    }
     if (rows.length === 0)
       return { error: "No rows matched. Data covers a limited ticker universe; a filter may also have excluded rows with missing (NULL) metrics." };
     return {
       spec,
       columns: built.keys.map((k) => ({ key: k, label: METRICS[k].label, unit: METRICS[k].unit })),
       rows,
+      ...(note ? { note } : {}),
     };
   } catch (e) {
     return { error: `Query failed: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}` };

@@ -1,9 +1,11 @@
 "use client";
 
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
+  Bar, BarChart, Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import type { FundamentalsData } from "@/lib/views";
+import { FollowUps } from "./FollowUps";
+import { axisMoney, titleCase } from "./CompanyOverview";
 
 function fmtMoney(v: number | null): string {
   if (v === null) return "—";
@@ -13,36 +15,71 @@ function fmtMoney(v: number | null): string {
   return `$${v.toFixed(0)}`;
 }
 
+const AXIS_TICK = { fill: "var(--viz-muted)", fontSize: 11 };
+const AXIS_LINE = { stroke: "var(--viz-axis)" };
+const TOOLTIP_STYLE = {
+  background: "var(--tooltip-bg)",
+  border: "1px solid var(--tooltip-border)",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "var(--foreground)",
+};
+
+const lastNonNull = (xs: (number | null)[]): number | null =>
+  [...xs].reverse().find((x) => x !== null) ?? null;
+
 export function Fundamentals({ data }: { data: FundamentalsData }) {
-  const points = data.rows.map((r) => ({
-    ...r,
-    revenueB: r.revenue !== null ? r.revenue / 1e9 : null,
-    netIncomeB: r.netIncome !== null ? r.netIncome / 1e9 : null,
-  }));
+  const points = data.rows;
+  const legend = [
+    { color: "var(--viz-1)", label: "Revenue", value: fmtMoney(lastNonNull(points.map((r) => r.revenue))) },
+    { color: "var(--viz-2)", label: "Net income", value: fmtMoney(lastNonNull(points.map((r) => r.netIncome))) },
+    { color: "var(--viz-3)", label: "Net margin", value: `${lastNonNull(points.map((r) => r.netMarginPct))?.toFixed(1) ?? "—"}%` },
+  ];
 
   return (
     <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 my-2 space-y-4">
       <div>
-        <span className="font-semibold">{data.companyName}</span>{" "}
+        <span className="font-semibold">{titleCase(data.companyName)}</span>{" "}
         <span className="text-neutral-500 text-sm">
           {data.ticker} · {data.periodType === "quarter" ? "quarterly" : "annual"} fundamentals
         </span>
       </div>
 
-      <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={points}>
-          <XAxis dataKey="fiscalLabel" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} />
-          <YAxis yAxisId="money" fontSize={11} width={50} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v}B`} />
-          <YAxis yAxisId="pct" orientation="right" fontSize={11} width={40} tick={{ fill: "var(--viz-muted)" }} axisLine={false} tickLine={false}
-                 tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-          <Tooltip contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }} />
-          <Legend />
-          <Bar yAxisId="money" dataKey="revenueB" name="Revenue ($B)" fill="var(--viz-1)" radius={[3, 3, 0, 0]} maxBarSize={18} />
-          <Bar yAxisId="money" dataKey="netIncomeB" name="Net income ($B)" fill="var(--viz-2)" radius={[3, 3, 0, 0]} maxBarSize={18} />
-          <Line yAxisId="pct" type="monotone" dataKey="netMarginPct" name="Net margin %"
-                stroke="var(--viz-4)" dot strokeWidth={2} />
-        </ComposedChart>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {legend.map((it) => (
+          <span key={it.label} className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: it.color }} />
+            <span className="text-neutral-500">{it.label}</span>
+            <span className="font-medium">{it.value}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* One measure per axis: dollars as bars, the margin as its own small
+          percent chart below — never a second y-axis. */}
+      <ResponsiveContainer width="100%" height={190}>
+        <BarChart data={points} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap="25%">
+          <CartesianGrid stroke="var(--viz-grid)" vertical={false} />
+          <XAxis dataKey="fiscalLabel" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} />
+          <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => axisMoney(v)} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, name) => [fmtMoney(Number(v)), name]} />
+          <Bar isAnimationActive={false} dataKey="revenue" name="Revenue" fill="var(--viz-1)" radius={[3, 3, 0, 0]} maxBarSize={18} />
+          <Bar isAnimationActive={false} dataKey="netIncome" name="Net income" fill="var(--viz-2)" radius={[3, 3, 0, 0]} maxBarSize={18} />
+        </BarChart>
       </ResponsiveContainer>
+      <div>
+        <div className="text-xs text-neutral-500 mb-1">Net margin</div>
+        <ResponsiveContainer width="100%" height={110}>
+          <LineChart data={points} margin={{ top: 4, right: 6, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="var(--viz-grid)" vertical={false} />
+            <XAxis dataKey="fiscalLabel" tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={45} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(1)}%`, "net margin"]} />
+            <Line isAnimationActive={false} type="monotone" dataKey="netMarginPct" name="Net margin"
+                  stroke="var(--viz-3)" strokeWidth={2} dot={false} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
 
       <table className="w-full text-sm">
         <thead>
@@ -66,6 +103,15 @@ export function Fundamentals({ data }: { data: FundamentalsData }) {
           ))}
         </tbody>
       </table>
+      <FollowUps
+        asks={[
+          data.periodType === "quarter"
+            ? { label: "Annual view", prompt: `Show ${data.ticker}'s annual fundamentals` }
+            : { label: "Quarterly view", prompt: `Show ${data.ticker}'s quarterly fundamentals` },
+          { label: "Full company overview", prompt: `Give me the full overview of ${data.ticker}` },
+          { label: "Margins vs peers", prompt: "Compare net margins across the covered stocks" },
+        ]}
+      />
     </div>
   );
 }

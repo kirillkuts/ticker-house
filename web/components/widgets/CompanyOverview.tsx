@@ -1,5 +1,6 @@
 "use client";
 
+import { useContext } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, CartesianGrid,
@@ -7,6 +8,32 @@ import {
 } from "recharts";
 import type { CompanyOverviewData } from "@/lib/views";
 import { formatValue } from "./MetricResult";
+import { FollowUps, AskContext } from "./FollowUps";
+
+// One-click head-to-head against any other covered company.
+function CompareWith({ tk, peers }: { tk: string; peers: string[] }) {
+  const { ask, busy } = useContext(AskContext);
+  if (!ask || peers.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+      <span className="text-neutral-400">Head-to-head vs</span>
+      {peers.map((p) => (
+        <button
+          key={p}
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            ask(`Compare ${tk} and ${p} head-to-head: P/E, P/S, revenue growth, net margin, return on equity and debt to equity`)
+          }
+          title={`Compare ${tk} with ${p}`}
+          className="rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-0.5 font-medium text-neutral-600 dark:text-neutral-300 transition-colors enabled:hover:border-blue-400 enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400 disabled:opacity-50"
+        >
+          {p}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const AXIS_TICK = { fill: "var(--viz-muted)", fontSize: 11 };
 const AXIS_LINE = { stroke: "var(--viz-axis)" };
@@ -24,7 +51,7 @@ const ratio = (v: number | null) => formatValue(v, "ratio");
 const usd = (v: number | null) => formatValue(v, "per_share");
 
 // Compact axis ticks: "$450B", not "$450.00B".
-function axisMoney(v: number): string {
+export function axisMoney(v: number): string {
   const abs = Math.abs(v);
   if (abs >= 1e12) return `$${(v / 1e12).toFixed(1).replace(/\.0$/, "")}T`;
   if (abs >= 1e9) return `$${Math.round(v / 1e9)}B`;
@@ -32,9 +59,13 @@ function axisMoney(v: number): string {
   return `$${v.toFixed(0)}`;
 }
 
-// Gentle title case for ALL-CAPS names from SEC data ("MICROSOFT CORP").
+// Gentle title case for shouting names from SEC data ("MICROSOFT CORP",
+// "ELI LILLY & Co"). Mostly-uppercase is the trigger — an exact all-caps
+// check misses names with a stray lowercase syllable.
 export function titleCase(name: string): string {
-  if (name !== name.toUpperCase()) return name;
+  const letters = name.replace(/[^a-z]/gi, "");
+  const uppers = letters.replace(/[^A-Z]/g, "");
+  if (letters.length === 0 || uppers.length / letters.length < 0.8) return name;
   return name
     .toLowerCase()
     .replace(/(^|[\s(&/-])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
@@ -133,6 +164,7 @@ const lastNonNull = <T,>(xs: (T | null)[]): T | null =>
 
 export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
   const t = data.ttm;
+  const tk = data.ticker;
   const pricePoints = data.prices.map((p) => ({ ...p, label: p.date.slice(5) }));
   const quarterPoints = data.quarterly.map((q) => ({
     ...q,
@@ -168,6 +200,43 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         <StatTile label="Revenue (TTM)" value={money(t.revenue)} hint={t.revenueGrowthYoy !== null ? `${t.revenueGrowthYoy >= 0 ? "+" : ""}${t.revenueGrowthYoy.toFixed(1)}% YoY` : undefined} />
         <StatTile label="Net margin (TTM)" value={pct(t.netMargin)} />
       </div>
+      <FollowUps
+        asks={[
+          { label: "Is it a good company?", prompt: `Based on this overview, is ${tk} a good company? What are the strengths and weaknesses?` },
+          { label: "Rank peers by market cap", prompt: "Rank the covered stocks by market cap" },
+        ]}
+      />
+
+      {/* About */}
+      {data.about?.description && (
+        <Section title="About">
+          <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+            {data.about.description}
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+            {data.about.headquarters && <span>{data.about.headquarters}</span>}
+            {data.about.employees !== null && (
+              <span>{new Intl.NumberFormat("en-US").format(data.about.employees)} employees</span>
+            )}
+            {data.about.website && (
+              <a
+                href={data.about.website}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-dotted underline-offset-2 hover:text-blue-600 dark:hover:text-blue-400"
+              >
+                {data.about.website.replace(/^https?:\/\/(www\.)?/, "")}
+              </a>
+            )}
+          </div>
+          <FollowUps
+            asks={[
+              { label: "How does it make money?", prompt: `Based on the overview data, how does ${tk} make money and what drives its revenue?` },
+              { label: "Closest business peers", prompt: `Which of the covered stocks are ${tk}'s closest business peers? Compare them on the key metrics.` },
+            ]}
+          />
+        </Section>
+      )}
 
       {/* Scores */}
       <Section title="Company score" caption={`percentile rank vs the ${data.peersCount} covered large caps`}>
@@ -194,6 +263,13 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             ))}
           </div>
         </div>
+        <FollowUps
+          asks={[
+            { label: "Explain these scores", prompt: `Explain ${tk}'s five scores — what is behind each one and where does it lag its peers?` },
+            { label: "Compare vs all peers", prompt: `Compare ${tk} with the other covered stocks on net margin, return on equity and revenue growth` },
+          ]}
+        />
+        <CompareWith tk={tk} peers={data.peerTickers ?? []} />
       </Section>
 
       {/* Price */}
@@ -209,6 +285,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
                   fill="var(--viz-1)" fillOpacity={0.1} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
+        <FollowUps
+          asks={[
+            { label: "Full price dashboard", prompt: `Show the full price dashboard for ${tk} over the last month` },
+            { label: "Price vs earnings", prompt: `Is ${tk}'s current price justified by its earnings? Look at P/E vs peers and EPS growth` },
+          ]}
+        />
       </Section>
 
       {/* Valuation vs peers */}
@@ -218,6 +300,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             <CompareBars key={v.metric} metric={v.metric} company={v.company} peerMedian={v.peerMedian} />
           ))}
         </div>
+        <FollowUps
+          asks={[
+            { label: "Rank peers by P/E", prompt: "Rank the covered stocks by P/E, cheapest first" },
+            { label: "Cheaper alternatives", prompt: `Which covered stocks are cheaper than ${tk} on P/E but still growing revenue?` },
+          ]}
+        />
       </Section>
 
       {/* Growth */}
@@ -253,6 +341,13 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             </ResponsiveContainer>
           </div>
         )}
+        <FollowUps
+          asks={[
+            { label: "Quarterly detail", prompt: `Show ${tk}'s quarterly fundamentals` },
+            { label: "Growth vs peers", prompt: "Rank the covered stocks by revenue growth" },
+            { label: "Revenue history vs a peer", prompt: `Chart ${tk}'s revenue over the last 5 years against its closest covered peer` },
+          ]}
+        />
       </Section>
 
       {/* Profitability */}
@@ -280,6 +375,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
           <StatTile label="Return on assets" value={pct(t.roa)} />
           <StatTile label="FCF margin" value={pct(t.fcfMargin)} hint={`FCF ${money(t.freeCashFlow)} TTM`} />
         </div>
+        <FollowUps
+          asks={[
+            { label: "Margins vs peers", prompt: "Compare net margins across the covered stocks" },
+            { label: "Quarterly margin trend", prompt: `Show ${tk}'s gross, operating and net margin for the last 8 quarters` },
+          ]}
+        />
       </Section>
 
       {/* Financial health */}
@@ -302,6 +403,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        <FollowUps
+          asks={[
+            { label: "Debt vs peers", prompt: "Rank the covered stocks by debt to equity, least indebted first" },
+            { label: "Cash & debt trend", prompt: `Show ${tk}'s cash and total debt over the last 5 years` },
+          ]}
+        />
       </Section>
 
       {/* Table twin of the annual charts */}
@@ -334,6 +441,13 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             </tbody>
           </table>
         </div>
+        <FollowUps
+          asks={[
+            { label: "Quarterly statements", prompt: `Show ${tk}'s quarterly fundamentals` },
+            { label: "EPS trend", prompt: `Chart ${tk}'s diluted EPS over the last 5 years` },
+            { label: "Free cash flow trend", prompt: `Chart ${tk}'s free cash flow over the last 5 years` },
+          ]}
+        />
       </Section>
 
       <p className="text-[11px] text-neutral-400">
