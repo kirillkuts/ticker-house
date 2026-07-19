@@ -256,13 +256,15 @@ export function HomeScreen({
                   key={c.slug}
                   href={`/category/${c.slug}`}
                   title={`${c.name}: ${c.blurb}`}
-                  className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 transition-colors hover:border-blue-400 dark:hover:border-blue-500"
+                  className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 transition-colors hover:border-blue-400 dark:hover:border-blue-500"
                 >
+                  {/* Long names ("Aerospace & Defense") ellipsize instead of
+                      pushing the change badge out of the card (task 054). */}
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-semibold whitespace-nowrap">{c.name}</span>
+                    <span className="min-w-0 truncate text-sm font-semibold">{c.name}</span>
                     {avg !== null && (
                       <span
-                        className="text-xs font-medium whitespace-nowrap"
+                        className="shrink-0 text-xs font-medium whitespace-nowrap"
                         style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
                       >
                         {up ? "▲" : "▼"} {up ? "+" : ""}{avg.toFixed(1)}%
