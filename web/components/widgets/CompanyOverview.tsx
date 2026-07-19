@@ -97,12 +97,40 @@ function Delta({ value, suffix = "" }: { value: number | null; suffix?: string }
   );
 }
 
-function Section({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
+// Optional deepDive prompt: a chat icon appears on hover next to the section
+// title and sends it — a focused canvas on just this section's stats plus a
+// plain-language explanation. Hidden without an AskContext provider.
+function Section({
+  title,
+  caption,
+  deepDive,
+  children,
+}: {
+  title: string;
+  caption?: string;
+  deepDive?: string;
+  children: React.ReactNode;
+}) {
+  const { ask, busy } = useContext(AskContext);
   return (
-    <section className="space-y-2">
+    <section className="group/section space-y-2">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         {caption && <span className="text-xs text-neutral-500">{caption}</span>}
+        {deepDive && ask && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => ask(deepDive, { fast: true })}
+            title={deepDive}
+            aria-label={`Deep dive into ${title.toLowerCase()}`}
+            className="self-center text-neutral-400 opacity-0 transition-opacity group-hover/section:opacity-100 enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400 disabled:opacity-30"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+              <path d="M14 8a6 6 0 0 1-6 6c-1 0-2-.2-2.8-.6L2 14l.7-3A6 6 0 1 1 14 8Z" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </div>
       {children}
     </section>
@@ -225,7 +253,10 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
 
       {/* About */}
       {data.about?.description && (
-        <Section title="About">
+        <Section
+          title="About"
+          deepDive={`Show ${tk}'s revenue by segment and explain in plain language, for a non-expert, how the company makes its money`}
+        >
           <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
             {data.about.description}
           </p>
@@ -255,7 +286,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       )}
 
       {/* Scores */}
-      <Section title="Company score" caption={`percentile rank vs the ${data.peersCount} covered large caps`}>
+      <Section
+        title="Company score"
+        caption={`percentile rank vs the ${data.peersCount} covered large caps`}
+        deepDive={`Show the metrics behind ${tk}'s scores vs the covered stocks — P/E, net margin, return on equity, revenue growth and debt to equity — and explain each score in plain language for a non-expert`}
+      >
         <div className="grid gap-4 sm:grid-cols-[260px_1fr] items-center">
           <ResponsiveContainer width="100%" height={220}>
             <RadarChart data={radarPoints} outerRadius="65%">
@@ -289,7 +324,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Price */}
-      <Section title="Price" caption={`${window} · high $${data.kpis.high.toFixed(2)} · low $${data.kpis.low.toFixed(2)}`}>
+      <Section
+        title="Price"
+        caption={`${window} · high $${data.kpis.high.toFixed(2)} · low $${data.kpis.low.toFixed(2)}`}
+        deepDive={`Show ${tk}'s full price dashboard for the last month and explain the recent move in plain language`}
+      >
         <ResponsiveContainer width="100%" height={170}>
           <AreaChart data={pricePoints} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="var(--viz-grid)" vertical={false} />
@@ -310,7 +349,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Valuation vs peers */}
-      <Section title="Valuation vs peers" caption="peer set = the covered universe">
+      <Section
+        title="Valuation vs peers"
+        caption="peer set = the covered universe"
+        deepDive={`Compare ${tk}'s P/E and P/S against the covered stocks and explain in plain language whether the stock looks expensive and why`}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           {data.valuation.map((v) => (
             <CompareBars key={v.metric} metric={v.metric} company={v.company} peerMedian={v.peerMedian} />
@@ -325,7 +368,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Growth */}
-      <Section title="Growth" caption={years}>
+      <Section
+        title="Growth"
+        caption={years}
+        deepDive={`Chart ${tk}'s revenue and net income over the last 5 years, show revenue by segment if available, and explain the growth story in plain language`}
+      >
         <LegendRow
           items={[
             { color: "var(--viz-1)", label: "Revenue", value: money(lastNonNull(data.annual.map((r) => r.revenue))) },
@@ -367,7 +414,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Profitability */}
-      <Section title="Profitability" caption="margins by fiscal year">
+      <Section
+        title="Profitability"
+        caption="margins by fiscal year"
+        deepDive={`Show ${tk}'s expense breakdown and margin trends, and explain in plain language where the money goes and what's behind the margins`}
+      >
         <LegendRow
           items={[
             { color: "var(--viz-1)", label: "Gross margin", value: pct(lastNonNull(data.annual.map((r) => r.grossMarginPct))) },
@@ -400,7 +451,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Financial health */}
-      <Section title="Financial health" caption="latest reported balance sheet">
+      <Section
+        title="Financial health"
+        caption="latest reported balance sheet"
+        deepDive={`Chart ${tk}'s cash, total debt and debt to equity over the last 5 years and explain in plain language how solid the balance sheet is`}
+      >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <StatTile label="Cash" value={money(t.cash)} />
           <StatTile label="Total debt" value={money(t.totalDebt)} />
@@ -428,7 +483,10 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </Section>
 
       {/* Table twin of the annual charts */}
-      <Section title="Annual figures">
+      <Section
+        title="Annual figures"
+        deepDive={`Show ${tk}'s annual fundamentals and explain the multi-year trajectory in plain language`}
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

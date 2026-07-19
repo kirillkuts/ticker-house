@@ -1,6 +1,8 @@
 # 014 — Per-section "chat" icon in the deep analysis
 
-**Status:** todo
+**Status:** done
+
+Resolution: `Section` in CompanyOverview.tsx takes an optional `deepDive` prompt and renders a chat-bubble icon next to the title (visible on section hover, hidden without AskContext, disabled while streaming). All eight sections got tailored prompts that name concrete views/metrics plus "explain in plain language for a non-expert": About → segments, Company score → metrics behind the scores, Price → price dashboard, Valuation → P/E+P/S vs peers, Growth → 5y revenue/income + segments, Profitability → expense breakdown, Financial health → cash/debt/debt-to-equity history, Annual figures → fundamentals. Sends with fast:true (Haiku per task 013); the new canvas comes free from canvas mode (task 007). Typecheck passes; worth a live hover+click check in the browser.
 
 From user screenshot (arrow at the "Financial health · latest reported balance sheet" section of the company overview): each section in the deep analysis should have a "chat" icon that kicks off a focused deep-dive:
 
