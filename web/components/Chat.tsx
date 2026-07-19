@@ -6,7 +6,8 @@ import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { SingleStockPriceData, FundamentalsData, CompanyOverviewData, HomeTicker } from "@/lib/views";
-import { mintChatAccessToken, startChatSession } from "@/app/actions";
+import type { RecentChat } from "@/lib/chats";
+import { mintChatAccessToken, startChatSession, saveChatAction } from "@/app/actions";
 import type { MetricQueryResult } from "@/lib/metric-query";
 import { SingleStockPrice } from "./widgets/SingleStockPrice";
 import { Fundamentals } from "./widgets/Fundamentals";
@@ -152,14 +153,54 @@ interface ViewRef {
 }
 const refKey = (r: ViewRef) => `${r.msgId}:${r.partIdx}`;
 
-export function Chat({ home = [] }: { home?: HomeTicker[] }) {
+export function Chat({
+  home = [],
+  recent = [],
+  chatId: routeChatId,
+  initialMessages = [],
+}: {
+  home?: HomeTicker[];
+  recent?: RecentChat[];
+  chatId?: string;
+  initialMessages?: ChatUIMessage[];
+}) {
   const transport = useTriggerChatTransport<typeof tickerChat>({
     task: "ticker-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
   });
 
-  const { messages, sendMessage, stop, status } = useChat<ChatUIMessage>({ transport });
+  // A chat is addressable from birth: the id comes from the /chat/[id] route
+  // when revisiting, or is minted here for a fresh conversation.
+  const [chatId] = useState(() => routeChatId ?? crypto.randomUUID());
+  const { messages, sendMessage, stop, status } = useChat<ChatUIMessage>({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+  });
+
+  // As soon as the conversation exists, move the URL to its permanent home
+  // without a navigation (a router push would remount and drop the stream).
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    if (hasMessages && !window.location.pathname.startsWith("/chat/")) {
+      window.history.replaceState(null, "", `/chat/${chatId}`);
+    }
+  }, [hasMessages, chatId]);
+
+  // Persist a full snapshot after each completed turn. Tool outputs ride along
+  // in the message parts, so a restore re-renders every widget with no refetch.
+  const savedCount = useRef(initialMessages.length);
+  useEffect(() => {
+    if (status !== "ready" || messages.length === 0 || messages.length === savedCount.current) return;
+    savedCount.current = messages.length;
+    const firstUserText =
+      messages
+        .find((m) => m.role === "user")
+        ?.parts.find((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+        ?.text.replace(CANVAS_BLOCK_RE, "") ?? "New chat";
+    saveChatAction(chatId, firstUserText.slice(0, 120), JSON.stringify(messages)).catch(() => {});
+  }, [status, messages, chatId]);
   const [input, setInput] = useState("");
   const [canvas, setCanvas] = useState<ViewRef[]>([]);
   const [canvasOpen, setCanvasOpen] = useState(false);
@@ -329,7 +370,7 @@ export function Chat({ home = [] }: { home?: HomeTicker[] }) {
   if (isEmpty) {
     return (
       <div className="flex min-h-screen px-4">
-        <HomeScreen home={home} onAsk={(text) => sendMessage({ text })} composer={composer} />
+        <HomeScreen home={home} recent={recent} onAsk={(text) => sendMessage({ text })} composer={composer} />
       </div>
     );
   }
