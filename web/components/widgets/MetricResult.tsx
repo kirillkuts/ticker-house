@@ -334,7 +334,7 @@ function LatestBarChart({ data }: { data: MetricQueryResult }) {
 
 // Context-sensitive follow-ups: only offer what the tools can actually answer
 // (a "5-year history" chip is wrong for latest-only metrics like P/E).
-function followUpsFor(data: MetricQueryResult, mode: Mode) {
+function followUpsFor(data: MetricQueryResult) {
   const tickers = [...new Set(data.rows.map((r) => String(r.ticker)))];
   const labels = data.columns.map((c) => c.label.toLowerCase()).join(", ");
   const asks: { label: string; prompt: string }[] = [];
@@ -344,11 +344,16 @@ function followUpsFor(data: MetricQueryResult, mode: Mode) {
   } else if (data.spec.metrics.every((k) => METRICS[k].periodExpr !== null) && tickers.length <= 8) {
     asks.push({ label: "5-year history", prompt: `Chart ${labels} over the last 5 years for ${tickers.join(", ")}` });
   }
-  if (mode === "bar" && tickers.length > 1) {
-    asks.push({ label: `${tickers[0]} overview`, prompt: `Give me the full overview of ${tickers[0]}` });
-  }
   if (tickers.length === 1) {
     asks.push({ label: "Full company overview", prompt: `Give me the full overview of ${tickers[0]}` });
+  } else {
+    // One overview chip per compared company (task 052), deterministic from
+    // the view's own ticker list. Capped so category-wide comparisons don't
+    // drown the row in chips; the metric universe is the covered universe,
+    // so every chip's overview is answerable.
+    for (const tk of tickers.slice(0, 5)) {
+      asks.push({ label: `${tk} overview`, prompt: `Give me the full overview of ${tk}` });
+    }
   }
   return asks;
 }
@@ -370,7 +375,7 @@ export function MetricResult({ data }: { data: MetricQueryResult }) {
       {mode === "bar" && data.spec.period === "latest" && data.columns.length > 1 && (
         <ResultTable data={data} />
       )}
-      <FollowUps asks={followUpsFor(data, mode)} />
+      <FollowUps asks={followUpsFor(data)} />
     </div>
   );
 }
