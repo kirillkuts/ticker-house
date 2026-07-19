@@ -7,7 +7,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
@@ -301,6 +301,11 @@ export function Chat({
   const [subTarget, setSubTarget] = useState<SubTarget | null>(null);
   const [explainPop, setExplainPop] = useState<ExplainPop | null>(null);
   const explainSeq = useRef(0);
+  // Interest signals for the session digest (task 039). In-memory per
+  // session: typed questions and chip clicks also live in messages, but
+  // explain-clicks, saves and removals exist only here.
+  const signals = useRef<{ kind: string; text: string }[]>([]);
+  const [summarizing, setSummarizing] = useState(false);
   // Escape or a click outside dismiss the popover. pointerdown (not click)
   // so a cmd+click on another explain target closes the old one first and
   // its own click-capture handler then opens the new one; clicks inside the
@@ -350,6 +355,7 @@ export function Chat({
   const saveWidget = (r: ViewRef, part: Part) => {
     const key = refKey(r);
     if (savedWidgets.has(key)) return;
+    signals.current.push({ kind: "save", text: describePart(part).slice(0, 160) });
     setSavedWidgets((prev) => new Set(prev).add(key));
     saveDashboardWidgetAction(
       crypto.randomUUID(),
@@ -496,7 +502,11 @@ export function Chat({
     setActiveCanvasId(r.msgId);
     setCanvasOpen(true);
   };
-  const removeFromCanvas = (r: ViewRef) => setRemovedKeys((prev) => new Set(prev).add(refKey(r)));
+  const removeFromCanvas = (r: ViewRef) => {
+    const part = messages.find((m) => m.id === r.msgId)?.parts[r.partIdx];
+    signals.current.push({ kind: "remove", text: part ? describePart(part).slice(0, 160) : refKey(r) });
+    setRemovedKeys((prev) => new Set(prev).add(refKey(r)));
+  };
   const showCanvasFor = (r: ViewRef) => {
     setActiveCanvasId(canvases.find((c) => c.entries.some((x) => refKey(x.ref) === refKey(r)))?.id ?? r.msgId);
     setCanvasOpen(true);
@@ -580,11 +590,64 @@ export function Chat({
   // the model always knows what is pinned. Pre-prompted questions (fast: true)
   // ride with speed metadata so the agent picks a smaller model for them.
   const ask = (text: string, opts?: { fast?: boolean }) => {
+    signals.current.push({ kind: opts?.fast ? "chip" : "typed", text: text.slice(0, 160) });
     const canvasBlock = canvasParts.length
       ? "\n\n[canvas]\n" +
         canvasParts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
       : "";
     sendMessage({ text: text + canvasBlock }, opts?.fast ? { metadata: { speed: "fast" } } : undefined);
+  };
+
+  // Session digest (task 039): the model ranks the produced views against the
+  // interest signals; the picked views are COPIED into a new local message —
+  // so the digest is itself a canvas, saveable to the dashboard per widget
+  // and persisted with the chat like any other exchange.
+  const summarizeSession = async () => {
+    if (summarizing) return;
+    const views = messages.flatMap((m) =>
+      m.role !== "assistant"
+        ? []
+        : m.parts
+            .map((part, i) => ({ part, ref: { msgId: m.id, partIdx: i } }))
+            .filter((x) => isViewPart(x.part))
+            .map((x) => ({ id: refKey(x.ref), desc: describePart(x.part), part: x.part })),
+    );
+    if (views.length === 0) return;
+    setSummarizing(true);
+    try {
+      const res = await summarizeInterestAction(
+        JSON.stringify(
+          signals.current.length
+            ? signals.current
+            : [{ kind: "typed", text: "(no explicit signals recorded — pick the most informative views)" }],
+        ),
+        JSON.stringify(views.map(({ id, desc }) => ({ id, desc }))),
+      );
+      if ("error" in res) throw new Error(res.error);
+      const byId = new Map(views.map((v) => [v.id, v.part]));
+      const picked = res.picks.map((p) => byId.get(p.id)).filter((p): p is Part => Boolean(p));
+      if (picked.length === 0) throw new Error("no views picked");
+      const stamp = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-su-${stamp}`,
+          role: "user" as const,
+          parts: [{ type: "text" as const, text: "Summarize this session for me" }],
+        },
+        {
+          id: `local-sa-${stamp}`,
+          role: "assistant" as const,
+          parts: [
+            { type: "text" as const, text: `**${res.title}**\n\n${res.note}` },
+            ...picked.map((part, i) => ({ ...(part as object), toolCallId: `summary-${stamp}-${i}` })),
+          ],
+        } as ChatUIMessage,
+      ]);
+    } catch {
+      // Silent failure keeps the session intact; the button re-enables.
+    }
+    setSummarizing(false);
   };
 
   const composer = (
@@ -777,6 +840,15 @@ export function Chat({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
+                  onClick={summarizeSession}
+                  disabled={summarizing}
+                  title="Build a digest canvas of what you focused on this session"
+                  className="text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 text-xs disabled:animate-pulse"
+                >
+                  {summarizing ? "summarizing…" : "✦ summarize"}
+                </button>
+                <button
+                  type="button"
                   onClick={clearActiveCanvas}
                   className="text-neutral-400 hover:text-neutral-600 text-xs"
                 >
@@ -862,6 +934,7 @@ export function Chat({
                     const question = el
                       ? `The user cmd+clicked a ${kind}${section ? ` in the "${section}" section` : ""} of the view "${describePart(part)}". Its visible content: "${snippet}". Surrounding view text: "${widgetText}". What is this ${kind} showing and how should a non-expert read it?`
                       : `The user cmd+clicked the view "${describePart(part)}". Its visible text: "${widgetText}". What is this view showing and how should a non-expert read it?`;
+                    signals.current.push({ kind: "explain", text: `${kind}: ${snippet.slice(0, 120)}` });
                     const token = ++explainSeq.current;
                     setExplainPop({
                       token,

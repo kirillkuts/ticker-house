@@ -113,6 +113,51 @@ export async function explainElementAction(question: string): Promise<ExplainRes
   }
 }
 
+// Session summary (task 039): given the user's interest signals (typed
+// questions, chip clicks, explain-clicks, saves/removes) and the views the
+// chat produced, pick the views the user actually cared about and write a
+// short digest note. The client assembles them into a final canvas.
+export interface InterestSummary {
+  title: string;
+  note: string;
+  picks: { id: string; reason: string }[];
+}
+
+export async function summarizeInterestAction(
+  signalsJson: string,
+  viewsJson: string,
+): Promise<InterestSummary | { error: string }> {
+  await requireUser();
+  try {
+    const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
+    const { object } = await generateObject({
+      model: openrouter("anthropic/claude-sonnet-5"),
+      // No length constraints in the schema — OpenRouter's Azure-hosted
+      // Claude rejects maxItems/maxLength; clamped in code below.
+      schema: z.object({
+        title: z.string().describe("Digest title under 60 chars, e.g. 'Your GOOGL margins deep-dive'"),
+        note: z.string().describe(
+          "2-4 short markdown sentences: the themes the user kept drilling into, referencing the picked views and their standout facts. Bold key terms/numbers. No filler.",
+        ),
+        picks: z.array(z.object({
+          id: z.string().describe("The view id, copied EXACTLY from the list"),
+          reason: z.string().describe("One clause: why this view made the digest"),
+        })).describe("2-5 views the user showed the most interest in, most important first"),
+      }),
+      system:
+        "You are TickerHouse's session summarizer. You get (1) the user's interest signals from a chat session — questions they typed, follow-up chips they clicked, elements they cmd+clicked to have explained, views they saved or removed — and (2) the list of views the session produced, each with an id and description. Infer what the user actually cared about (typed questions and explain-clicks weigh most; removed views count against). Pick the 2-5 views that best serve that interest as a final digest, and write a short note tying them together. Use ONLY ids from the provided list, verbatim.",
+      prompt: `Interest signals, in order:\n${signalsJson.slice(0, 6000)}\n\nViews produced (id — description):\n${viewsJson.slice(0, 6000)}`,
+    });
+    return {
+      title: object.title.slice(0, 80),
+      note: object.note,
+      picks: (object.picks ?? []).slice(0, 5),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message.slice(0, 200) : "Summary failed" };
+  }
+}
+
 export async function mintChatAccessToken(chatId: string) {
   await requireUser();
   return auth.createPublicToken({
