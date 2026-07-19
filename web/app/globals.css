@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Dark mode keys off data-mode (set by the pre-hydration script in layout.tsx
+   from the stored theme choice, falling back to the system preference), so an
+   opt-in theme like "ch" can force dark regardless of the OS setting. */
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -32,29 +37,60 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root[data-mode="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 
-    /* Same hues re-stepped for the dark surface (validated as a set). */
-    --viz-1: #3987e5;
-    --viz-2: #008300;
-    --viz-3: #d55181;
-    --viz-4: #c98500;
-    --viz-5: #199e70;
-    --viz-6: #d95926;
-    --viz-7: #9085e9;
-    --viz-8: #e66767;
-    --viz-1-soft: #0d366b;
-    --viz-grid: #2c2c2a;
-    --viz-axis: #383835;
-    --viz-muted: #898781;
-    --viz-up-text: #0ca30c;
-    --viz-down-text: #e66767;
-    --tooltip-bg: #262626;
-    --tooltip-border: #383835;
-  }
+  /* Same hues re-stepped for the dark surface (validated as a set). */
+  --viz-1: #3987e5;
+  --viz-2: #008300;
+  --viz-3: #d55181;
+  --viz-4: #c98500;
+  --viz-5: #199e70;
+  --viz-6: #d95926;
+  --viz-7: #9085e9;
+  --viz-8: #e66767;
+  --viz-1-soft: #0d366b;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #383835;
+  --viz-muted: #898781;
+  --viz-up-text: #0ca30c;
+  --viz-down-text: #e66767;
+  --tooltip-bg: #262626;
+  --tooltip-border: #383835;
+}
+
+/* Experimental "ch" theme: ClickHouse-style near-black surfaces with a yellow
+   accent. Always dark (the toggle sets data-mode=dark alongside it). Utilities
+   like text-blue-600 resolve through --color-blue-*, so remapping that scale
+   to a yellow ramp re-accents every component without touching markup. */
+:root[data-theme="ch"] {
+  --background: #0c0c09;
+  --foreground: #f4f4ee;
+
+  --viz-1: #ffcc00;        /* series 1 / accent: ClickHouse yellow */
+  --viz-1-soft: #3d3200;   /* meter track under the yellow fill */
+  --viz-4: #4aa8ff;        /* old amber slot would collide with the accent — swap in the retired blue */
+  --viz-grid: #262622;
+  --viz-axis: #3a3a33;
+  --viz-muted: #8f8d82;
+  --tooltip-bg: #1a1a14;
+  --tooltip-border: #3a3a33;
+
+  --color-blue-50: #fefce8;
+  --color-blue-300: #ffe266;
+  --color-blue-400: #ffd633;
+  --color-blue-500: #ffcc00;
+  --color-blue-600: #ffcc00;
+  --color-blue-700: #e6b800;
+  --color-blue-950: #332900;
+}
+
+/* Solid yellow fills need dark text — white-on-yellow fails contrast. */
+:root[data-theme="ch"] .bg-blue-500,
+:root[data-theme="ch"] .bg-blue-600,
+:root[data-theme="ch"] .bg-blue-700 {
+  color: #191400;
 }
 
 /* Minimal styling for model markdown output; Tailwind preflight strips defaults. */

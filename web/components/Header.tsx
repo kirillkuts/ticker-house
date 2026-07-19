@@ -1,4 +1,5 @@
 import { signOutAction } from "@/app/actions";
+import { ThemeToggle } from "./ThemeToggle";
 
 // The one brand treatment used everywhere: logo + wordmark on the left
 // (always a link home), contextual actions on the right.
@@ -39,6 +40,7 @@ export function Header({ children }: { children?: React.ReactNode }) {
           <span className="hidden @lg:inline">Dashboard</span>
         </a>
         {children}
+        <ThemeToggle />
         <form action={signOutAction}>
           <button
             type="submit"
