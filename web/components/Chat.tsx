@@ -5,7 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
-import type { HomeTicker } from "@/lib/views";
+import type { HomeTicker, WatchlistQuote } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
 import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction, listDashboardsAction, createDashboardAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
@@ -230,6 +230,8 @@ export function Chat({
   chatId: routeChatId,
   initialMessages = [],
   initialAsk,
+  watchlist = [],
+  watchlistExtra = [],
 }: {
   home?: HomeTicker[];
   recent?: RecentChat[];
@@ -237,6 +239,10 @@ export function Chat({
   initialMessages?: ChatUIMessage[];
   // Question to send on mount (e.g. a dashboard chip seeding a new chat).
   initialAsk?: string;
+  // Active watchlist symbols + quotes for watched tickers outside the
+  // fundamentals universe (task 045's Watching section).
+  watchlist?: string[];
+  watchlistExtra?: WatchlistQuote[];
 }) {
   const transport = useTriggerChatTransport<typeof tickerChat>({
     task: "ticker-chat",
@@ -770,6 +776,8 @@ export function Chat({
         <HomeScreen
           home={home}
           recent={recent}
+          watchlist={watchlist}
+          watchlistExtra={watchlistExtra}
           onAsk={(text) => sendMessage({ text }, { metadata: { speed: "fast" } })}
           onTickerTile={instantOverview}
           composer={composer}
@@ -1023,7 +1031,12 @@ export function Chat({
                       answer: "",
                       suggestions: [],
                     });
-                    explainElementAction(question).then((res) => {
+                    const partInput = "input" in part ? (part.input as Record<string, unknown> | undefined) : undefined;
+                    const explainTicker = typeof partInput?.ticker === "string" ? partInput.ticker : undefined;
+                    explainElementAction(
+                      question,
+                      explainTicker ? { symbol: explainTicker, label: `${kind}: ${snippet.slice(0, 120)}` } : undefined,
+                    ).then((res) => {
                       setExplainPop((p) =>
                         p && p.token === token
                           ? "error" in res

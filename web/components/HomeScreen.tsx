@@ -1,11 +1,13 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-import type { HomeTicker } from "@/lib/views";
+import { useEffect, useSyncExternalStore } from "react";
+import type { HomeTicker, WatchlistQuote } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
 import { relativeTime } from "@/lib/format";
 import { CATEGORIES, categorySlugOf } from "@/lib/categories";
 import { companyDisplayName } from "./widgets/CompanyOverview";
+import { WatchStar } from "./WatchStar";
+import { seedWatchlist, useWatchlist } from "./watchStore";
 
 // Sort choice for the covered-companies grid, persisted across reloads.
 // localStorage is the source of truth; useSyncExternalStore avoids both the
@@ -75,7 +77,10 @@ export function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: stri
       className="group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-semibold whitespace-nowrap">{t.ticker}</span>
+        <span className="flex items-baseline gap-1.5 font-semibold whitespace-nowrap">
+          {t.ticker}
+          <WatchStar symbol={t.ticker} />
+        </span>
         {singleDay ? (
           <span className="text-[10px] uppercase tracking-wide text-neutral-400 whitespace-nowrap">1 day</span>
         ) : (
@@ -96,15 +101,53 @@ export function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: stri
   );
 }
 
+// Watched ticker outside the fundamentals universe: price-only coverage, so
+// the tile is symbol + last close and the click opens a price chart instead
+// of the overview (the chat system prompt's coverage rule, mirrored here).
+function PriceOnlyCard({ q, onOpen }: { q: WatchlistQuote; onOpen: (symbol: string) => void }) {
+  const up = q.changePct !== null && q.changePct >= 0;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(q.symbol)}
+      title={`Open the ${q.symbol} price chart · price coverage only`}
+      className="group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="flex items-baseline gap-1.5 font-semibold whitespace-nowrap">
+          {q.symbol}
+          <WatchStar symbol={q.symbol} />
+        </span>
+        {q.changePct !== null && (
+          <span
+            className="text-xs font-medium whitespace-nowrap"
+            style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
+          >
+            {up ? "▲" : "▼"} {up ? "+" : ""}{q.changePct.toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <div className="truncate text-xs text-neutral-500">{q.companyName ? companyDisplayName(q.companyName) : "Price data only"}</div>
+      <div className="mt-2 text-sm font-medium tabular-nums whitespace-nowrap">
+        {q.lastClose !== null ? `$${q.lastClose.toFixed(2)}` : "—"}
+      </div>
+    </button>
+  );
+}
+
 export function HomeScreen({
   home,
   recent = [],
+  watchlist = [],
+  watchlistExtra = [],
   onAsk,
   onTickerTile,
   composer,
 }: {
   home: HomeTicker[];
   recent?: RecentChat[];
+  watchlist?: string[];
+  watchlistExtra?: WatchlistQuote[];
   onAsk: (text: string) => void;
   // Instant path for company tiles; falls back to asking the agent.
   onTickerTile?: (ticker: string) => void;
@@ -112,6 +155,17 @@ export function HomeScreen({
 }) {
   const openTile = onTickerTile ?? ((tk: string) => onAsk(`Give me the full overview of ${tk}`));
   const sort = useSyncExternalStore(subscribeSort, readSort, () => "az" as HomeSort);
+
+  // The server already knows the watchlist; seed the shared store so stars
+  // paint without a round-trip, then render the section from the live set so
+  // starring a tile moves it into Watching immediately.
+  useEffect(() => seedWatchlist(watchlist), [watchlist]);
+  const watchingSet = useWatchlist();
+  const watching = [...(watchingSet ?? [])].map((sym) => ({
+    sym,
+    covered: home.find((h) => h.ticker.toUpperCase() === sym) ?? null,
+    quote: watchlistExtra.find((q) => q.symbol === sym) ?? null,
+  }));
   const sorted =
     sort === "revenue"
       ? [...home].sort((a, b) => (b.revenueTtm ?? -Infinity) - (a.revenueTtm ?? -Infinity))
@@ -145,6 +199,25 @@ export function HomeScreen({
           ))}
         </div>
       </div>
+
+      {watching.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold">Watching</h2>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+            {watching.map(({ sym, covered, quote }) =>
+              covered ? (
+                <TickerCard key={sym} t={covered} onOpen={openTile} />
+              ) : (
+                <PriceOnlyCard
+                  key={sym}
+                  q={quote ?? { symbol: sym, companyName: null, lastClose: null, changePct: null }}
+                  onOpen={(s) => onAsk(`Show the ${s} price chart for the last month`)}
+                />
+              ),
+            )}
+          </div>
+        </div>
+      )}
 
       {recent.length > 0 && (
         <div className="space-y-2">

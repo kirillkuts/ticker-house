@@ -74,9 +74,15 @@ export async function saveDashboardWidget(
   );
 }
 
-export async function removeDashboardWidget(userId: string, widgetId: string): Promise<void> {
+// Returns the removed recipe (null if nothing matched) so the caller can log
+// the removal as an interest signal.
+export async function removeDashboardWidget(userId: string, widgetId: string): Promise<{ tool: string; input: string } | null> {
   await ensureSchema();
-  await db().query(`DELETE FROM dashboard_widgets WHERE widget_id = $1 AND user_id = $2`, [widgetId, userId]);
+  const res = await db().query<{ tool: string; input: string }>(
+    `DELETE FROM dashboard_widgets WHERE widget_id = $1 AND user_id = $2 RETURNING tool, input`,
+    [widgetId, userId],
+  );
+  return res.rows[0] ?? null;
 }
 
 export async function listDashboardWidgets(userId: string, dashboardId: string): Promise<DashboardRecipe[]> {

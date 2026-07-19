@@ -10,6 +10,7 @@ import type { CompanyOverviewData } from "@/lib/views";
 import { METRICS, type MetricKey } from "@/lib/metric-registry";
 import { formatValue, MetricLabel } from "./MetricResult";
 import { FollowUps, AskContext } from "./FollowUps";
+import { WatchStar } from "../WatchStar";
 
 // Stat-tile label with the registry's plain-language tooltip (see MetricLabel).
 const metricLabel = (key: MetricKey, label?: string) => (
@@ -232,7 +233,10 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       {/* Identity + price header */}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <div className="text-lg font-semibold leading-tight">{titleCase(data.companyName)}</div>
+          <div className="flex items-center gap-2 text-lg font-semibold leading-tight">
+            {titleCase(data.companyName)}
+            <WatchStar symbol={data.ticker} className="text-base" />
+          </div>
           <div className="text-sm text-neutral-500">
             {data.ticker} · {data.industry || data.sector}
           </div>

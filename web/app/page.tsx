@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { Chat } from "@/components/Chat";
-import { homeSnapshot } from "@/lib/views";
+import { homeSnapshot, watchlistQuotes, type WatchlistQuote } from "@/lib/views";
 import { recentChats } from "@/lib/chats";
 import { currentUser } from "@/lib/auth";
+import { getWatchlist } from "@/lib/watchlist";
 
 // The home cards read live prices from ClickHouse on every request.
 export const dynamic = "force-dynamic";
@@ -14,10 +15,18 @@ export default async function Home({
 }) {
   const user = await currentUser();
   if (!user) redirect("/login");
-  const [home, recent, { ask }] = await Promise.all([
+  const [home, recent, watch, { ask }] = await Promise.all([
     homeSnapshot().catch(() => []),
     recentChats(user.id).catch(() => []),
+    getWatchlist(user.id).catch(() => []),
     searchParams,
   ]);
-  return <Chat home={home} recent={recent} initialAsk={ask} />;
+  // Watched tickers outside the fundamentals universe still get a tile:
+  // symbol + last close from the price data (task 045).
+  const watchlist = watch.map((w) => w.symbol);
+  const uncovered = watchlist.filter((s) => !home.some((h) => h.ticker.toUpperCase() === s));
+  const watchlistExtra: WatchlistQuote[] = uncovered.length
+    ? await watchlistQuotes(uncovered).catch(() => [])
+    : [];
+  return <Chat home={home} recent={recent} initialAsk={ask} watchlist={watchlist} watchlistExtra={watchlistExtra} />;
 }

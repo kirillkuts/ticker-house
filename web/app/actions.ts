@@ -9,7 +9,8 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats, claimChat } from "@/lib/chats";
 import { companyOverview } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
-import { createUser, verifyUser, startSession, endSession, requireUser } from "@/lib/auth";
+import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
+import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "@/lib/watchlist";
 
 const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
 
@@ -65,19 +66,53 @@ export async function listRecentChats() {
 
 // Direct company-overview fetch for the home tiles: the question and the
 // tool call are known in advance, so the client skips the agent roundtrip.
+// Opening a company this way is an interest signal (task 045); recording is
+// fire-and-forget and never delays or breaks the canvas open.
 export async function fetchCompanyOverview(ticker: string) {
+  currentUser()
+    .then((user) => user && recordInterest(user.id, ticker, "overview_view", { source: "tile" }))
+    .catch(() => {});
   return companyOverview(ticker);
+}
+
+// --- watchlist (task 045) -----------------------------------------------------
+
+export async function toggleWatchlistAction(symbol: string, watch: boolean) {
+  const user = await requireUser();
+  if (watch) await addToWatchlist(user.id, symbol);
+  else await removeFromWatchlist(user.id, symbol);
+}
+
+export async function watchlistSymbolsAction(): Promise<string[]> {
+  const user = await currentUser();
+  if (!user) return [];
+  return (await getWatchlist(user.id)).map((w) => w.symbol);
 }
 
 // Save a widget recipe (tool + input) to a named dashboard / remove one.
 export async function saveDashboardWidgetAction(widgetId: string, tool: string, inputJson: string, dashboardId: string) {
   const user = await requireUser();
   await saveDashboardWidget(user.id, dashboardId, widgetId, tool, inputJson);
+  const ticker = tickerOfInput(inputJson);
+  if (ticker) await recordInterest(user.id, ticker, "widget_saved", { tool, widget_id: widgetId });
 }
 
 export async function removeDashboardWidgetAction(widgetId: string) {
   const user = await requireUser();
-  await removeDashboardWidget(user.id, widgetId);
+  const removed = await removeDashboardWidget(user.id, widgetId);
+  const ticker = removed && tickerOfInput(removed.input);
+  if (ticker) await recordInterest(user.id, ticker, "widget_removed", { tool: removed.tool, widget_id: widgetId });
+}
+
+// Single-stock recipes carry their ticker in the input; multi-stock widgets
+// (query_metrics screens) don't and record no single-stock interest.
+function tickerOfInput(inputJson: string): string | null {
+  try {
+    const input = JSON.parse(inputJson) as Record<string, unknown>;
+    return typeof input.ticker === "string" && input.ticker ? input.ticker : null;
+  } catch {
+    return null;
+  }
 }
 
 // Named dashboards (task 043): list for the save picker and the switcher,
@@ -112,8 +147,16 @@ export interface ExplainResult {
   suggestions: { label: string; prompt: string }[];
 }
 
-export async function explainElementAction(question: string): Promise<ExplainResult | { error: string }> {
-  await requireUser();
+export async function explainElementAction(
+  question: string,
+  // Cmd+clicking an element of a single-stock view is an interest signal
+  // (task 045); the client passes the view's ticker and the element label.
+  interest?: { symbol: string; label: string },
+): Promise<ExplainResult | { error: string }> {
+  const user = await requireUser();
+  if (interest?.symbol) {
+    void recordInterest(user.id, interest.symbol, "explain_click", { label: interest.label.slice(0, 200) });
+  }
   try {
     const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_KEY });
     const { object } = await generateObject({
