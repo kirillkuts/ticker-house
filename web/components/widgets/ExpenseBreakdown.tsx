@@ -57,7 +57,7 @@ export function ExpenseBreakdown({ data }: { data: ExpenseBreakdownData }) {
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {segments.map((s) => (
-          <span key={s.label} className="inline-flex items-center gap-1.5">
+          <span key={s.label} data-explain="legend entry" className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
             <span className="text-neutral-500">{s.label}</span>
             <span className="font-medium">{fmtMoney(last[s.key] as number | null)}</span>

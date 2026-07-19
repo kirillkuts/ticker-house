@@ -155,9 +155,9 @@ function StatTile({ label, value, hint }: { label: React.ReactNode; value: strin
 
 function LegendRow({ items }: { items: { color: string; label: string; value?: string }[] }) {
   return (
-    <div data-explain="legend" className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
       {items.map((it) => (
-        <span key={it.label} className="inline-flex items-center gap-1.5">
+        <span key={it.label} data-explain="legend entry" className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: it.color }} />
           <span className="text-neutral-500">{it.label}</span>
           {it.value && <span className="font-medium">{it.value}</span>}
@@ -169,7 +169,7 @@ function LegendRow({ items }: { items: { color: string; label: string; value?: s
 
 function ScoreMeter({ axis, score, detail }: { axis: string; score: number | null; detail: string }) {
   return (
-    <div>
+    <div data-explain="company score">
       <div className="flex items-baseline justify-between text-sm">
         <span>{axis}</span>
         <span className="font-semibold">{score === null ? "—" : `${score.toFixed(1)}`}<span className="text-neutral-400 font-normal text-xs"> /5</span></span>

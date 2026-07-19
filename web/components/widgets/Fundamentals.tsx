@@ -50,7 +50,7 @@ export function Fundamentals({ data }: { data: FundamentalsData }) {
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {legend.map((it) => (
-          <span key={it.label} className="inline-flex items-center gap-1.5">
+          <span key={it.label} data-explain="legend entry" className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: it.color }} />
             <span className="text-neutral-500">{it.label}</span>
             <span className="font-medium">{it.value}</span>
