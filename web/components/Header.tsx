@@ -1,3 +1,5 @@
+import { signOutAction } from "@/app/actions";
+
 // The one brand treatment used everywhere: logo + wordmark on the left
 // (always a link home), contextual actions on the right.
 function Logo() {
@@ -37,6 +39,16 @@ export function Header({ children }: { children?: React.ReactNode }) {
           <span className="hidden @lg:inline">Dashboard</span>
         </a>
         {children}
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            title="Sign out"
+            className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-red-400 hover:text-red-500"
+          >
+            <span className="hidden @lg:inline">Sign out</span>
+            <span className="@lg:hidden" aria-hidden>⎋</span>
+          </button>
+        </form>
       </div>
     </header>
   );

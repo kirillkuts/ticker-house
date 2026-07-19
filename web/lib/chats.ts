@@ -1,48 +1,22 @@
-import { chClient } from "./clickhouse";
+import { db, ensureSchema } from "./db";
 import type { ChatUIMessage } from "@/trigger/chat";
 
-// Chat history lives in ClickHouse next to the market data: one row per save,
-// ReplacingMergeTree keeps the newest snapshot per chat_id. Each snapshot is
-// the full UIMessage[] (including tool outputs), so restoring a chat restores
-// its widgets without re-running any queries.
+// Chat history lives in Postgres, one row per chat, scoped to its owner.
+// Each save stores the full UIMessage[] snapshot (including tool outputs), so
+// restoring a chat restores its widgets without re-running any queries.
 
-let ensured: Promise<void> | null = null;
-
-function ensureTable(): Promise<void> {
-  ensured ??= (async () => {
-    const ch = chClient();
-    try {
-      await ch.command({
-        query: `
-CREATE TABLE IF NOT EXISTS chats
-(
-    chat_id String,
-    title String,
-    messages String,
-    updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
-)
-ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY chat_id`,
-      });
-    } finally {
-      await ch.close();
-    }
-  })();
-  return ensured;
-}
-
-export async function saveChat(chatId: string, title: string, messagesJson: string): Promise<void> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    await ch.insert({
-      table: "chats",
-      values: [{ chat_id: chatId, title, messages: messagesJson }],
-      format: "JSONEachRow",
-    });
-  } finally {
-    await ch.close();
-  }
+export async function saveChat(userId: string, chatId: string, title: string, messagesJson: string): Promise<void> {
+  await ensureSchema();
+  // The WHERE on the upsert makes ownership sticky: a colliding chat_id from
+  // another user updates nothing instead of stealing the chat.
+  await db().query(
+    `INSERT INTO chats (chat_id, user_id, title, messages, updated_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (chat_id) DO UPDATE
+       SET title = EXCLUDED.title, messages = EXCLUDED.messages, updated_at = now()
+       WHERE chats.user_id = EXCLUDED.user_id`,
+    [chatId, userId, title, messagesJson],
+  );
 }
 
 export interface StoredChat {
@@ -51,28 +25,19 @@ export interface StoredChat {
   messages: ChatUIMessage[];
 }
 
-export async function loadChat(chatId: string): Promise<StoredChat | null> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    const rs = await ch.query({
-      query: `SELECT chat_id AS chatId, title, messages
-              FROM chats FINAL
-              WHERE chat_id = {id:String}
-              LIMIT 1`,
-      query_params: { id: chatId },
-      format: "JSONEachRow",
-    });
-    const rows = await rs.json<{ chatId: string; title: string; messages: string }>();
-    if (rows.length === 0) return null;
-    return {
-      chatId: rows[0].chatId,
-      title: rows[0].title,
-      messages: JSON.parse(rows[0].messages) as ChatUIMessage[],
-    };
-  } finally {
-    await ch.close();
-  }
+export async function loadChat(userId: string, chatId: string): Promise<StoredChat | null> {
+  await ensureSchema();
+  const res = await db().query<{ chat_id: string; title: string; messages: string }>(
+    `SELECT chat_id, title, messages FROM chats WHERE chat_id = $1 AND user_id = $2`,
+    [chatId, userId],
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    chatId: row.chat_id,
+    title: row.title,
+    messages: JSON.parse(row.messages) as ChatUIMessage[],
+  };
 }
 
 export interface RecentChat {
@@ -81,20 +46,15 @@ export interface RecentChat {
   updatedAt: string;
 }
 
-export async function recentChats(limit = 8): Promise<RecentChat[]> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    const rs = await ch.query({
-      query: `SELECT chat_id AS chatId, title, toString(updated_at) AS updatedAt
-              FROM chats FINAL
-              ORDER BY updated_at DESC
-              LIMIT {lim:UInt32}`,
-      query_params: { lim: limit },
-      format: "JSONEachRow",
-    });
-    return await rs.json<RecentChat>();
-  } finally {
-    await ch.close();
-  }
+export async function recentChats(userId: string, limit = 8): Promise<RecentChat[]> {
+  await ensureSchema();
+  const res = await db().query<RecentChat>(
+    `SELECT chat_id AS "chatId", title, to_char(updated_at, 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+     FROM chats
+     WHERE user_id = $1
+     ORDER BY updated_at DESC
+     LIMIT $2`,
+    [userId, limit],
+  );
+  return res.rows;
 }

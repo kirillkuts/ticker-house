@@ -1,10 +1,10 @@
-import { chClient } from "./clickhouse";
+import { db, ensureSchema } from "./db";
 import { singleStockPrice, fundamentals, companyOverview, expenseBreakdown, segmentBreakdown, RANGES, type Range } from "./views";
 import { runMetricQuery } from "./metric-query";
 
 // The dashboard stores widget RECIPES (tool name + input), not frozen
 // outputs: the page re-runs the view queries on every load, so saved widgets
-// always show current data.
+// always show current data. Recipes live in Postgres, scoped to their owner.
 
 export interface DashboardRecipe {
   widgetId: string;
@@ -13,74 +13,31 @@ export interface DashboardRecipe {
   addedAt: string;
 }
 
-let ensured: Promise<void> | null = null;
-
-function ensureTable(): Promise<void> {
-  ensured ??= (async () => {
-    const ch = chClient();
-    try {
-      await ch.command({
-        query: `
-CREATE TABLE IF NOT EXISTS dashboard_widgets
-(
-    widget_id String,
-    tool String,
-    input String,
-    added_at DateTime64(3, 'UTC') DEFAULT now64(3)
-)
-ENGINE = ReplacingMergeTree(added_at)
-ORDER BY widget_id`,
-      });
-    } finally {
-      await ch.close();
-    }
-  })();
-  return ensured;
+export async function saveDashboardWidget(userId: string, widgetId: string, tool: string, inputJson: string): Promise<void> {
+  await ensureSchema();
+  await db().query(
+    `INSERT INTO dashboard_widgets (widget_id, user_id, tool, input)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (widget_id) DO NOTHING`,
+    [widgetId, userId, tool, inputJson],
+  );
 }
 
-export async function saveDashboardWidget(widgetId: string, tool: string, inputJson: string): Promise<void> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    await ch.insert({
-      table: "dashboard_widgets",
-      values: [{ widget_id: widgetId, tool, input: inputJson }],
-      format: "JSONEachRow",
-    });
-  } finally {
-    await ch.close();
-  }
+export async function removeDashboardWidget(userId: string, widgetId: string): Promise<void> {
+  await ensureSchema();
+  await db().query(`DELETE FROM dashboard_widgets WHERE widget_id = $1 AND user_id = $2`, [widgetId, userId]);
 }
 
-export async function removeDashboardWidget(widgetId: string): Promise<void> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    await ch.command({
-      query: `DELETE FROM dashboard_widgets WHERE widget_id = {id:String}`,
-      query_params: { id: widgetId },
-    });
-  } finally {
-    await ch.close();
-  }
-}
-
-export async function listDashboardWidgets(): Promise<DashboardRecipe[]> {
-  await ensureTable();
-  const ch = chClient();
-  try {
-    const rs = await ch.query({
-      query: `SELECT widget_id AS widgetId, tool, input, toString(added_at) AS addedAt
-              FROM dashboard_widgets FINAL
-              ORDER BY added_at`,
-      query_params: {},
-      format: "JSONEachRow",
-    });
-    const rows = await rs.json<{ widgetId: string; tool: string; input: string; addedAt: string }>();
-    return rows.map((r) => ({ ...r, input: JSON.parse(r.input) as Record<string, unknown> }));
-  } finally {
-    await ch.close();
-  }
+export async function listDashboardWidgets(userId: string): Promise<DashboardRecipe[]> {
+  await ensureSchema();
+  const res = await db().query<{ widgetId: string; tool: string; input: string; addedAt: string }>(
+    `SELECT widget_id AS "widgetId", tool, input, to_char(added_at, 'YYYY-MM-DD HH24:MI:SS') AS "addedAt"
+     FROM dashboard_widgets
+     WHERE user_id = $1
+     ORDER BY added_at`,
+    [userId],
+  );
+  return res.rows.map((r) => ({ ...r, input: JSON.parse(r.input) as Record<string, unknown> }));
 }
 
 // Re-run a recipe against live data. Unknown tools and query failures return

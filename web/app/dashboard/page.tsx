@@ -1,12 +1,16 @@
+import { redirect } from "next/navigation";
 import { Header } from "@/components/Header";
 import { DashboardGrid } from "@/components/DashboardGrid";
 import { listDashboardWidgets, runDashboardRecipe } from "@/lib/dashboard";
+import { currentUser } from "@/lib/auth";
 
 // Recipes re-run against ClickHouse on every request — the data is live.
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const recipes = await listDashboardWidgets().catch(() => []);
+  const user = await currentUser();
+  if (!user) redirect("/login");
+  const recipes = await listDashboardWidgets(user.id).catch(() => []);
   const widgets = await Promise.all(
     recipes.map(async (r) => ({
       widgetId: r.widgetId,
