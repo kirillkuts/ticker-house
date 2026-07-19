@@ -162,6 +162,14 @@ interface ViewRef {
 }
 const refKey = (r: ViewRef) => `${r.msgId}:${r.partIdx}`;
 
+// One canvas per dashboard answer: the views one assistant message produced,
+// labeled by the question that triggered it.
+interface CanvasGroup {
+  id: string; // the assistant message id
+  label: string;
+  entries: { ref: ViewRef; part: Part }[];
+}
+
 export function Chat({
   home = [],
   recent = [],
@@ -211,7 +219,13 @@ export function Chat({
     saveChatAction(chatId, firstUserText.slice(0, 120), JSON.stringify(messages)).catch(() => {});
   }, [status, messages, chatId]);
   const [input, setInput] = useState("");
-  const [canvas, setCanvas] = useState<ViewRef[]>([]);
+  // Canvases derive from message parts — one per dashboard answer — so
+  // switching between them never refetches, and a restored chat rebuilds its
+  // whole canvas history. Two overlays hold the user's edits: view keys
+  // removed from canvases, and view keys manually pinned onto them.
+  const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  const [pinnedKeys, setPinnedKeys] = useState<Set<string>>(new Set());
+  const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   // Canvas width as % of the viewport, adjustable by dragging the divider.
   const [canvasPct, setCanvasPct] = useState(52);
@@ -247,18 +261,73 @@ export function Chat({
     window.addEventListener("pointerup", onUp);
   };
 
-  const resolvePart = (r: ViewRef): Part | null =>
-    messages.find((m) => m.id === r.msgId)?.parts[r.partIdx] ?? null;
+  // Group view parts into canvases, one per assistant message. A message gets
+  // a canvas when it auto-qualifies — 2+ view calls or a single BIG widget
+  // (answers that read as dashboards), unless the model edited the canvas
+  // itself (its edit wins) — or when the user pinned one of its views.
+  // Counting CALLS (not finished outputs) moves views over as soon as the
+  // call starts; pending views stay as placeholders, errors drop out.
+  const canvases: CanvasGroup[] = [];
+  messages.forEach((m, mi) => {
+    if (m.role !== "assistant") return;
+    const views = m.parts
+      .map((p, i) => ({ part: p, ref: { msgId: m.id, partIdx: i } }))
+      .filter((x) => isViewToolPart(x.part));
+    if (views.length === 0) return;
+    const modelEdited = m.parts.some((p) => p.type === "tool-edit_canvas");
+    const qualifies = !modelEdited && (views.length >= 2 || views.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
+    const entries = views.filter(
+      (x) => (qualifies || pinnedKeys.has(refKey(x.ref))) && !removedKeys.has(refKey(x.ref)) && !isErrorPart(x.part),
+    );
+    if (entries.length === 0) return;
+    // Label by the question that triggered this answer; lead tickers as backup.
+    let label = "";
+    for (let i = mi - 1; i >= 0; i--) {
+      const prev = messages[i];
+      if (prev.role !== "user") continue;
+      label = (prev.parts.find((p): p is Extract<Part, { type: "text" }> => p.type === "text")?.text ?? "")
+        .replace(CANVAS_BLOCK_RE, "")
+        .trim();
+      break;
+    }
+    if (!label) label = [...new Set(entries.flatMap((x) => partTickers(x.part)))].join(", ") || `Answer ${canvases.length + 1}`;
+    if (label.length > 40) label = `${label.slice(0, 40)}…`;
+    canvases.push({ id: m.id, label, entries });
+  });
 
-  const canvasKeys = new Set(canvas.map(refKey));
-  const addToCanvas = (r: ViewRef) => {
-    setCanvas((prev) => (prev.some((x) => refKey(x) === refKey(r)) ? prev : [...prev, r]));
+  const activeCanvas = canvases.find((c) => c.id === activeCanvasId) ?? canvases[canvases.length - 1] ?? null;
+  const canvasParts = activeCanvas?.entries ?? [];
+  const canvasKeys = new Set(canvases.flatMap((c) => c.entries.map((x) => refKey(x.ref))));
+
+  const pinToCanvas = (r: ViewRef) => {
+    setPinnedKeys((prev) => new Set(prev).add(refKey(r)));
+    setRemovedKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(refKey(r));
+      return next;
+    });
+    setActiveCanvasId(r.msgId);
     setCanvasOpen(true);
   };
-  const removeFromCanvas = (r: ViewRef) =>
-    setCanvas((prev) => prev.filter((x) => refKey(x) !== refKey(r)));
+  const removeFromCanvas = (r: ViewRef) => setRemovedKeys((prev) => new Set(prev).add(refKey(r)));
+  const showCanvasFor = (r: ViewRef) => {
+    setActiveCanvasId(canvases.find((c) => c.entries.some((x) => refKey(x.ref) === refKey(r)))?.id ?? r.msgId);
+    setCanvasOpen(true);
+  };
+  // "clear" empties only the canvas the user is looking at; its slot in the
+  // history disappears and the previous canvas takes over.
+  const clearActiveCanvas = () => {
+    if (!activeCanvas) return;
+    setRemovedKeys((prev) => {
+      const next = new Set(prev);
+      activeCanvas.entries.forEach((x) => next.add(refKey(x.ref)));
+      return next;
+    });
+  };
 
   // Apply model-issued canvas edits (edit_canvas tool outputs), once each.
+  // remove/clear act on what the user currently sees; add_new_views pins this
+  // answer's views, which materializes a canvas for it and focuses it.
   const appliedEdits = useRef(new Set<string>());
   useEffect(() => {
     for (const m of messages) {
@@ -269,57 +338,40 @@ export function Chat({
         if (appliedEdits.current.has(key)) return;
         appliedEdits.current.add(key);
         const op = part.output as { remove?: string[]; clear?: boolean; add_new_views?: boolean };
-        setCanvas((prev) => {
-          let next = op.clear ? [] : prev;
-          if (op.remove?.length) {
-            const drop = new Set(op.remove);
-            next = next.filter((r) => !drop.has(refKey(r)));
-          }
-          if (op.add_new_views) {
-            const fresh = m.parts
-              .map((p, j) => ({ p, ref: { msgId: m.id, partIdx: j } }))
-              .filter((x) => isViewPart(x.p) && !next.some((r) => refKey(r) === refKey(x.ref)))
-              .map((x) => x.ref);
-            next = [...next, ...fresh];
-          }
-          return next;
-        });
+        if (op.clear) clearActiveCanvas();
+        if (op.remove?.length) setRemovedKeys((prev) => new Set([...prev, ...op.remove!]));
+        if (op.add_new_views) {
+          const fresh = m.parts
+            .map((p, j) => ({ p, ref: { msgId: m.id, partIdx: j } }))
+            .filter((x) => isViewPart(x.p))
+            .map((x) => refKey(x.ref));
+          setPinnedKeys((prev) => new Set([...prev, ...fresh]));
+          setActiveCanvasId(m.id);
+        }
         setCanvasOpen(true);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // Answers that read as dashboards auto-open on the canvas, replacing its
-  // content: multi-view answers (2+ view tool calls in one message) and single
-  // BIG widgets — full-dashboard views that would otherwise turn the chat
-  // column into a giant scroll. Small results (metric tables, chips) stay
-  // inline. Counting CALLS (not finished outputs) moves views over as soon as
-  // the call starts, before the widgets settle inline. Messages where the
-  // model edited the canvas itself are exempt — its edit wins.
-  const artifactRefs = messages
-    .filter((m) => m.role === "assistant" && !m.parts.some((p) => p.type === "tool-edit_canvas"))
-    .map((m) => ({
-      id: m.id,
-      refs: m.parts.map((p, i) => ({ part: p, ref: { msgId: m.id, partIdx: i } })).filter((x) => isViewToolPart(x.part)),
-    }))
-    .filter((a) => a.refs.length >= 2 || a.refs.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
-  const latestArtifact = artifactRefs[artifactRefs.length - 1] ?? null;
-  const latestArtifactKey = latestArtifact
-    ? `${latestArtifact.id}:${latestArtifact.refs.length}`
-    : null;
+  // A new dashboard answer becomes the visible canvas; older ones stay in the
+  // history switcher. Fires only when the newest canvas is NEW or GAINS views
+  // (streaming) — a shrink means the user removed a view, which must not
+  // yank the canvas back open.
+  const newestCanvas = canvases[canvases.length - 1] ?? null;
+  const newestCanvasKey = newestCanvas ? `${newestCanvas.id}:${newestCanvas.entries.length}` : null;
+  const seenNewest = useRef<{ id: string; count: number } | null>(null);
   useEffect(() => {
-    if (latestArtifact) {
-      setCanvas(latestArtifact.refs.map((x) => x.ref));
-      setCanvasOpen(true);
-    }
+    if (!newestCanvas) return;
+    const prev = seenNewest.current;
+    const grew = !prev || prev.id !== newestCanvas.id || newestCanvas.entries.length > prev.count;
+    seenNewest.current = { id: newestCanvas.id, count: newestCanvas.entries.length };
+    if (!grew) return;
+    setActiveCanvasId(newestCanvas.id);
+    setCanvasOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestArtifactKey]);
+  }, [newestCanvasKey]);
 
-  // Keep pending views (query still running) on the canvas as placeholders;
-  // drop only errors and vanished parts.
-  const canvasParts = canvas
-    .map((r) => ({ ref: r, part: resolvePart(r) }))
-    .filter((x): x is { ref: ViewRef; part: Part } => x.part !== null && isViewToolPart(x.part) && !isErrorPart(x.part));
   const showCanvas = canvasOpen && canvasParts.length > 0;
   const isEmpty = messages.length === 0;
 
@@ -455,7 +507,7 @@ export function Chat({
                   const pending = !("state" in part) || part.state !== "output-available";
                   return (
                     <div key={i} className={`chip-in my-2 inline-flex items-center gap-2 rounded-xl border border-blue-500 bg-blue-50 dark:bg-blue-950 px-3 py-2 text-sm ${pending ? "animate-pulse" : ""}`}>
-                      <button type="button" onClick={() => setCanvasOpen(true)} className="flex items-center gap-2">
+                      <button type="button" onClick={() => showCanvasFor(ref)} className="flex items-center gap-2">
                         <span>▦</span>
                         <span className="font-medium">{describePart(part)}</span>
                         <span className="text-neutral-500">{pending ? "loading…" : "on canvas"}</span>
@@ -477,7 +529,7 @@ export function Chat({
                     {isViewPart(part) && (
                       <button
                         type="button"
-                        onClick={() => addToCanvas(ref)}
+                        onClick={() => pinToCanvas(ref)}
                         className="absolute right-3 top-5 z-10 rounded-lg border px-2 py-1 text-xs transition-opacity border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 opacity-0 group-hover:opacity-100 hover:border-blue-400 hover:text-blue-600"
                       >
                         ▦ canvas
@@ -516,7 +568,7 @@ export function Chat({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setCanvas([])}
+                  onClick={clearActiveCanvas}
                   className="text-neutral-400 hover:text-neutral-600 text-xs"
                 >
                   clear
@@ -531,6 +583,25 @@ export function Chat({
                 </button>
               </div>
             </div>
+            {canvases.length > 1 && (
+              <div className="flex gap-1.5 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800 px-4 py-2">
+                {canvases.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setActiveCanvasId(c.id)}
+                    title={c.label}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors ${
+                      c.id === activeCanvas?.id
+                        ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                        : "border-neutral-200 text-neutral-500 hover:border-blue-400 dark:border-neutral-800"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto p-4">
               {canvasParts.map(({ ref, part }) => (
                 <div key={refKey(ref)} className="chip-in relative group">
