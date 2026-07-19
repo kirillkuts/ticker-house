@@ -1,6 +1,8 @@
 # 004 — Big widgets open straight in canvas
 
-**Status:** todo
+**Status:** done
+
+Resolution: the auto-canvas condition in Chat.tsx now fires for any message with 2+ view calls OR at least one BIG view (company overview, price chart, fundamentals — new module-level BIG_VIEW_TYPES set). Metric tables and chips stay inline. The compact reference card in chat and follow-ups-from-canvas already existed for multi-view answers and are reused unchanged. Typecheck passes; worth a quick live click-through of "full overview of MSFT" when next in the browser.
 
 From user screenshot: a full company overview renders inline in the chat column, making the chat a giant scroll. Big widgets should go straight to the canvas panel even when the answer has only one widget.
 

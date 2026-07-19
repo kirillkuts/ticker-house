@@ -146,6 +146,14 @@ function canvasTitle(parts: Part[]): string {
   return who ? `Canvas · ${who}` : "Canvas";
 }
 
+// Full-dashboard views: even a single one auto-opens on the canvas instead of
+// swallowing the chat column. Metric tables and chips stay inline.
+const BIG_VIEW_TYPES = new Set([
+  "tool-show_company_overview",
+  "tool-show_price_chart",
+  "tool-show_fundamentals",
+]);
+
 // A view on the canvas, identified by its position in the message list so we
 // always render from the live message parts.
 interface ViewRef {
@@ -281,18 +289,20 @@ export function Chat({
     }
   }, [messages]);
 
-  // Multi-view answers (2+ view tool calls in one message) auto-open on the
-  // canvas: replace its content, like opening a fresh dashboard. Counting
-  // CALLS (not finished outputs) moves views over as soon as the second call
-  // starts, before the widgets settle inline. Messages where the model edited
-  // the canvas itself are exempt — its edit wins.
+  // Answers that read as dashboards auto-open on the canvas, replacing its
+  // content: multi-view answers (2+ view tool calls in one message) and single
+  // BIG widgets — full-dashboard views that would otherwise turn the chat
+  // column into a giant scroll. Small results (metric tables, chips) stay
+  // inline. Counting CALLS (not finished outputs) moves views over as soon as
+  // the call starts, before the widgets settle inline. Messages where the
+  // model edited the canvas itself are exempt — its edit wins.
   const artifactRefs = messages
     .filter((m) => m.role === "assistant" && !m.parts.some((p) => p.type === "tool-edit_canvas"))
     .map((m) => ({
       id: m.id,
       refs: m.parts.map((p, i) => ({ part: p, ref: { msgId: m.id, partIdx: i } })).filter((x) => isViewToolPart(x.part)),
     }))
-    .filter((a) => a.refs.length >= 2);
+    .filter((a) => a.refs.length >= 2 || a.refs.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
   const latestArtifact = artifactRefs[artifactRefs.length - 1] ?? null;
   const latestArtifactKey = latestArtifact
     ? `${latestArtifact.id}:${latestArtifact.refs.length}`
