@@ -1,7 +1,7 @@
 // DB-level verification for task 026: users, password auth, per-user scoping.
 import { createUser, verifyUser } from "../lib/auth";
 import { saveChat, loadChat, recentChats } from "../lib/chats";
-import { saveDashboardWidget, listDashboardWidgets, removeDashboardWidget } from "../lib/dashboard";
+import { saveDashboardWidget, listDashboardWidgets, removeDashboardWidget, createDashboard } from "../lib/dashboard";
 import { db } from "../lib/db";
 
 function assert(cond: unknown, msg: string) {
@@ -48,13 +48,18 @@ const stamp = Date.now();
   assert(!recentB.some((c) => c.chatId === chatId), "chat not in B's recents");
   
   const widgetId = `w-${stamp}`;
-  await saveDashboardWidget(userA.id, widgetId, "show_price_chart", JSON.stringify({ ticker: "AAPL", range: "1m" }));
-  assert((await listDashboardWidgets(userA.id)).some((w) => w.widgetId === widgetId), "widget in A's dashboard");
-  assert(!(await listDashboardWidgets(userB.id)).some((w) => w.widgetId === widgetId), "widget not in B's dashboard");
+  const dashA = await createDashboard(userA.id, "Test dash");
+  const dashB = await createDashboard(userB.id, "B dash");
+  await saveDashboardWidget(userA.id, dashA.id, widgetId, "show_price_chart", JSON.stringify({ ticker: "AAPL", range: "1m" }));
+  assert((await listDashboardWidgets(userA.id, dashA.id)).some((w) => w.widgetId === widgetId), "widget in A's dashboard");
+  assert(!(await listDashboardWidgets(userB.id, dashB.id)).some((w) => w.widgetId === widgetId), "widget not in B's dashboard");
+  // Saving into someone else's dashboard is a no-op (ownership subquery).
+  await saveDashboardWidget(userB.id, dashA.id, `w2-${stamp}`, "show_price_chart", "{}");
+  assert(!(await listDashboardWidgets(userA.id, dashA.id)).some((w) => w.widgetId === `w2-${stamp}`), "B cannot save into A's dashboard");
   await removeDashboardWidget(userB.id, widgetId);
-  assert((await listDashboardWidgets(userA.id)).some((w) => w.widgetId === widgetId), "B cannot remove A's widget");
+  assert((await listDashboardWidgets(userA.id, dashA.id)).some((w) => w.widgetId === widgetId), "B cannot remove A's widget");
   await removeDashboardWidget(userA.id, widgetId);
-  assert(!(await listDashboardWidgets(userA.id)).some((w) => w.widgetId === widgetId), "A removed own widget");
+  assert(!(await listDashboardWidgets(userA.id, dashA.id)).some((w) => w.widgetId === widgetId), "A removed own widget");
   
   // Cleanup test rows.
   await db().query(`DELETE FROM users WHERE email IN ($1, $2)`, [emailA, emailB]);

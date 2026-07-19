@@ -13,13 +13,64 @@ export interface DashboardRecipe {
   addedAt: string;
 }
 
-export async function saveDashboardWidget(userId: string, widgetId: string, tool: string, inputJson: string): Promise<void> {
+export interface Dashboard {
+  id: string;
+  name: string;
+  createdAt: string;
+  widgetCount: number;
+}
+
+export async function listDashboards(userId: string): Promise<Dashboard[]> {
   await ensureSchema();
+  const res = await db().query<Dashboard>(
+    `SELECT d.id, d.name, to_char(d.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt",
+            count(w.widget_id)::int AS "widgetCount"
+     FROM dashboards d
+     LEFT JOIN dashboard_widgets w ON w.dashboard_id = d.id
+     WHERE d.user_id = $1
+     GROUP BY d.id
+     ORDER BY d.created_at`,
+    [userId],
+  );
+  return res.rows;
+}
+
+export async function createDashboard(userId: string, name: string): Promise<{ id: string; name: string }> {
+  await ensureSchema();
+  const res = await db().query<{ id: string; name: string }>(
+    `INSERT INTO dashboards (user_id, name) VALUES ($1, $2) RETURNING id, name`,
+    [userId, name.trim().slice(0, 80) || "Untitled"],
+  );
+  return res.rows[0];
+}
+
+export async function renameDashboard(userId: string, id: string, name: string): Promise<void> {
+  await ensureSchema();
+  await db().query(`UPDATE dashboards SET name = $3 WHERE id = $1 AND user_id = $2`, [
+    id, userId, name.trim().slice(0, 80) || "Untitled",
+  ]);
+}
+
+// Widgets go with it (FK ON DELETE CASCADE).
+export async function deleteDashboard(userId: string, id: string): Promise<void> {
+  await ensureSchema();
+  await db().query(`DELETE FROM dashboards WHERE id = $1 AND user_id = $2`, [id, userId]);
+}
+
+export async function saveDashboardWidget(
+  userId: string,
+  dashboardId: string,
+  widgetId: string,
+  tool: string,
+  inputJson: string,
+): Promise<void> {
+  await ensureSchema();
+  // The dashboard must belong to the same user; the subquery enforces it.
   await db().query(
-    `INSERT INTO dashboard_widgets (widget_id, user_id, tool, input)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO dashboard_widgets (widget_id, user_id, tool, input, dashboard_id)
+     SELECT $1, $2, $3, $4, d.id FROM dashboards d WHERE d.id = $5 AND d.user_id = $2
      ON CONFLICT (widget_id) DO NOTHING`,
-    [widgetId, userId, tool, inputJson],
+    [widgetId, userId, tool, inputJson, dashboardId],
   );
 }
 
@@ -28,14 +79,14 @@ export async function removeDashboardWidget(userId: string, widgetId: string): P
   await db().query(`DELETE FROM dashboard_widgets WHERE widget_id = $1 AND user_id = $2`, [widgetId, userId]);
 }
 
-export async function listDashboardWidgets(userId: string): Promise<DashboardRecipe[]> {
+export async function listDashboardWidgets(userId: string, dashboardId: string): Promise<DashboardRecipe[]> {
   await ensureSchema();
   const res = await db().query<{ widgetId: string; tool: string; input: string; addedAt: string }>(
     `SELECT widget_id AS "widgetId", tool, input, to_char(added_at, 'YYYY-MM-DD HH24:MI:SS') AS "addedAt"
      FROM dashboard_widgets
-     WHERE user_id = $1
+     WHERE user_id = $1 AND dashboard_id = $2
      ORDER BY added_at`,
-    [userId],
+    [userId, dashboardId],
   );
   return res.rows.map((r) => ({ ...r, input: JSON.parse(r.input) as Record<string, unknown> }));
 }

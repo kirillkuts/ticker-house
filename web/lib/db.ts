@@ -46,6 +46,21 @@ export function ensureSchema(): Promise<void> {
         added_at  timestamptz NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS widgets_user_added ON dashboard_widgets (user_id, added_at);
+      CREATE TABLE IF NOT EXISTS dashboards (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name       text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      ALTER TABLE dashboard_widgets ADD COLUMN IF NOT EXISTS dashboard_id uuid REFERENCES dashboards(id) ON DELETE CASCADE;
+      -- Widgets saved before dashboards existed land in a per-user "Default".
+      INSERT INTO dashboards (user_id, name)
+      SELECT DISTINCT w.user_id, 'Default' FROM dashboard_widgets w
+      WHERE w.dashboard_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM dashboards d WHERE d.user_id = w.user_id AND d.name = 'Default');
+      UPDATE dashboard_widgets w SET dashboard_id = d.id
+      FROM dashboards d
+      WHERE w.dashboard_id IS NULL AND d.user_id = w.user_id AND d.name = 'Default';
     `);
   })();
   return ensured;

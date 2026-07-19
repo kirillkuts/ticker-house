@@ -8,7 +8,7 @@ import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats } from "@/lib/chats";
 import { companyOverview } from "@/lib/views";
-import { saveDashboardWidget, removeDashboardWidget } from "@/lib/dashboard";
+import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser } from "@/lib/auth";
 
 export const startChatSession = chat.createStartSessionAction("ticker-chat");
@@ -58,15 +58,37 @@ export async function fetchCompanyOverview(ticker: string) {
   return companyOverview(ticker);
 }
 
-// Save a widget recipe (tool + input) to the live dashboard / remove one.
-export async function saveDashboardWidgetAction(widgetId: string, tool: string, inputJson: string) {
+// Save a widget recipe (tool + input) to a named dashboard / remove one.
+export async function saveDashboardWidgetAction(widgetId: string, tool: string, inputJson: string, dashboardId: string) {
   const user = await requireUser();
-  await saveDashboardWidget(user.id, widgetId, tool, inputJson);
+  await saveDashboardWidget(user.id, dashboardId, widgetId, tool, inputJson);
 }
 
 export async function removeDashboardWidgetAction(widgetId: string) {
   const user = await requireUser();
   await removeDashboardWidget(user.id, widgetId);
+}
+
+// Named dashboards (task 043): list for the save picker and the switcher,
+// create for the session default, rename/delete for dashboard management.
+export async function listDashboardsAction() {
+  const user = await requireUser();
+  return listDashboards(user.id);
+}
+
+export async function createDashboardAction(name: string) {
+  const user = await requireUser();
+  return createDashboard(user.id, name);
+}
+
+export async function renameDashboardAction(id: string, name: string) {
+  const user = await requireUser();
+  await renameDashboard(user.id, id, name);
+}
+
+export async function deleteDashboardAction(id: string) {
+  const user = await requireUser();
+  await deleteDashboard(user.id, id);
 }
 
 // Cmd+click "what is this?" (task 032): a one-off explanation shown in a

@@ -7,7 +7,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction, listDashboardsAction, createDashboardAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
@@ -359,19 +359,88 @@ export function Chat({
     };
   }, []);
 
-  // Widgets saved to the live dashboard this session, keyed by view ref.
+  // Widgets saved to a dashboard this session, keyed by view ref. Saving
+  // goes through a picker (task 043): the first save creates a session
+  // dashboard auto-named from the conversation; later saves default to it,
+  // and any existing dashboard can be chosen instead.
   const [savedWidgets, setSavedWidgets] = useState<Set<string>>(new Set());
-  const saveWidget = (r: ViewRef, part: Part) => {
-    const key = refKey(r);
-    if (savedWidgets.has(key)) return;
-    signals.current.push({ kind: "save", text: describePart(part).slice(0, 160) });
-    setSavedWidgets((prev) => new Set(prev).add(key));
-    saveDashboardWidgetAction(
-      crypto.randomUUID(),
-      part.type.slice("tool-".length),
-      JSON.stringify(("input" in part ? part.input : undefined) ?? {}),
-    ).catch(() => {});
+  const [sessionDashboard, setSessionDashboard] = useState<{ id: string; name: string } | null>(null);
+  const [saveMenu, setSaveMenu] = useState<{
+    ref: ViewRef;
+    part: Part;
+    top: number;
+    left: number;
+    list: { id: string; name: string }[] | null;
+  } | null>(null);
+
+  const sessionDashboardName = () => {
+    const topic =
+      messages
+        .find((m) => m.role === "user")
+        ?.parts.find((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+        ?.text.replace(CANVAS_BLOCK_RE, "")
+        .trim()
+        .slice(0, 40) || "Session";
+    const day = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${topic} · ${day}`;
   };
+
+  const openSaveMenu = (r: ViewRef, part: Part, e: React.MouseEvent) => {
+    if (savedWidgets.has(refKey(r))) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setSaveMenu({
+      ref: r,
+      part,
+      top: Math.min(rect.bottom + 4, window.innerHeight - 200),
+      left: Math.min(Math.max(rect.right - 224, 8), window.innerWidth - 232),
+      list: null,
+    });
+    listDashboardsAction()
+      .then((list) => setSaveMenu((m) => (m && refKey(m.ref) === refKey(r) ? { ...m, list } : m)))
+      .catch(() => setSaveMenu((m) => (m && refKey(m.ref) === refKey(r) ? { ...m, list: [] } : m)));
+  };
+
+  const saveWidgetTo = async (r: ViewRef, part: Part, target: { id: string; name: string } | null) => {
+    setSaveMenu(null);
+    let dashboard = target ?? sessionDashboard;
+    try {
+      if (!dashboard) dashboard = await createDashboardAction(sessionDashboardName());
+      setSessionDashboard(dashboard);
+      signals.current.push({ kind: "save", text: describePart(part).slice(0, 160) });
+      setSavedWidgets((prev) => new Set(prev).add(refKey(r)));
+      await saveDashboardWidgetAction(
+        crypto.randomUUID(),
+        part.type.slice("tool-".length),
+        JSON.stringify(("input" in part ? part.input : undefined) ?? {}),
+        dashboard.id,
+      );
+    } catch {
+      // Leave the widget unsaved; the button stays available.
+      setSavedWidgets((prev) => {
+        const next = new Set(prev);
+        next.delete(refKey(r));
+        return next;
+      });
+    }
+  };
+
+  // The save menu closes like the explain popover: Escape or a click outside.
+  const saveMenuOpen = saveMenu !== null;
+  useEffect(() => {
+    if (!saveMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSaveMenu(null);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-save-menu]")) setSaveMenu(null);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [saveMenuOpen]);
 
   // As soon as the conversation exists, move the URL to its permanent home
   // without a navigation (a router push would remount and drop the stream).
@@ -799,7 +868,7 @@ export function Chat({
                       <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
-                          onClick={() => saveWidget(ref, part)}
+                          onClick={(e) => openSaveMenu(ref, part, e)}
                           title="Save to the live dashboard"
                           className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
                         >
@@ -978,7 +1047,7 @@ export function Chat({
                   <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
-                      onClick={() => saveWidget(ref, part)}
+                      onClick={(e) => openSaveMenu(ref, part, e)}
                       title="Save to the live dashboard"
                       className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
                     >
@@ -1004,6 +1073,42 @@ export function Chat({
         </aside>
       )}
     </div>
+    {saveMenu && (
+      <div
+        data-save-menu
+        className="fixed z-50 w-56 rounded-xl border p-1.5 shadow-lg text-sm"
+        style={{
+          top: saveMenu.top, left: saveMenu.left,
+          background: "var(--tooltip-bg)", borderColor: "var(--tooltip-border)",
+        }}
+      >
+        <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-neutral-400">save to dashboard</div>
+        <button
+          type="button"
+          onClick={() => saveWidgetTo(saveMenu.ref, saveMenu.part, null)}
+          className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        >
+          {sessionDashboard ? sessionDashboard.name : `＋ ${sessionDashboardName()}`}
+          <span className="ml-1 text-[11px] text-neutral-400">{sessionDashboard ? "· this session" : "· new"}</span>
+        </button>
+        {saveMenu.list === null ? (
+          <div className="px-2 py-1.5 text-xs text-neutral-400 animate-pulse">loading dashboards…</div>
+        ) : (
+          saveMenu.list
+            .filter((d) => d.id !== sessionDashboard?.id)
+            .map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => saveWidgetTo(saveMenu.ref, saveMenu.part, d)}
+                className="block w-full truncate rounded-lg px-2 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                {d.name}
+              </button>
+            ))
+        )}
+      </div>
+    )}
     {explainPop && (
       <div
         data-explain-popover
