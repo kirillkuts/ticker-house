@@ -15,6 +15,7 @@ import { MetricResult } from "./widgets/MetricResult";
 import { CompanyOverview } from "./widgets/CompanyOverview";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { Header } from "./Header";
+import { ChatHistory } from "./ChatHistory";
 import { HomeScreen } from "./HomeScreen";
 
 type Part = ChatUIMessage["parts"][number];
@@ -439,7 +440,9 @@ export function Chat({
     return (
       <div className="flex min-h-screen flex-col px-4">
         <div className="mx-auto w-full max-w-2xl pt-4">
-          <Header />
+          <Header>
+            <ChatHistory />
+          </Header>
         </div>
         <HomeScreen home={home} recent={recent} onAsk={(text) => sendMessage({ text })} composer={composer} />
       </div>
@@ -460,6 +463,7 @@ export function Chat({
               ▦ Canvas ({canvasParts.length})
             </button>
           )}
+          <ChatHistory />
           <button
             type="button"
             onClick={() => window.location.assign("/")}

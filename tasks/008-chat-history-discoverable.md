@@ -1,6 +1,8 @@
 # 008 — Make chat history discoverable
 
-**Status:** todo
+**Status:** done
+
+Resolution: new `components/ChatHistory.tsx` — a "Chats" button in the shared Header (both home and chat views) that opens a dropdown of the last 12 chats (title + relative time, links to /chat/<id>). It fetches via a new `listRecentChats` server action on every open, so just-saved chats appear without a reload. Closes on outside click and Escape. `relativeTime` moved to lib/format.ts (shared with HomeScreen, whose list stays). Verified: renders on home, typecheck passes.
 
 From user: "how do i see a history of my chats" — the recent-chats list exists (home page, under the suggestion chips, added in task 002) but the user didn't find it. History must be reachable from anywhere, not just the empty home screen.
 
