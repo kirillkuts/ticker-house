@@ -39,6 +39,17 @@ export function Header({ children }: { children?: React.ReactNode }) {
           </svg>
           <span className="hidden @lg:inline">Dashboard</span>
         </a>
+        <a
+          href="/briefing"
+          title="Daily watchlist briefing"
+          className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="shrink-0">
+            <path d="M3 2.5h10v11H3z" />
+            <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
+          </svg>
+          <span className="hidden @lg:inline">Briefing</span>
+        </a>
         {children}
         <ThemeToggle />
         <form action={signOutAction}>

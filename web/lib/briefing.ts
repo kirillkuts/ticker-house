@@ -67,6 +67,64 @@ export async function runDailyBriefing(
   return { date, since, briefs, briefings, errors };
 }
 
+// --- reads for the /briefing page (task 051) ----------------------------------
+
+export interface BriefingStockSection {
+  symbol: string;
+  status: "events" | "quiet";
+  body: string;
+  filings: { form: string; filedDate: string; url: string; items: string }[];
+  priceMove: { date: string; movePct: number; close: number; prevClose: number } | null;
+}
+
+export interface BriefingView {
+  date: string;
+  body: string;
+  sections: BriefingStockSection[];
+}
+
+export async function briefingDates(userId: string): Promise<string[]> {
+  await ensureSchema();
+  const res = await db().query<{ d: string }>(
+    `SELECT to_char(briefing_date, 'YYYY-MM-DD') AS d FROM briefings
+     WHERE user_id = $1 ORDER BY briefing_date DESC LIMIT 60`,
+    [userId],
+  );
+  return res.rows.map((r) => r.d);
+}
+
+// The layer-2 body plus the underlying per-stock briefs for the user's
+// watched symbols: the sections carry the reliable filing links (the
+// assembled prose may abbreviate citations).
+export async function briefingForDate(userId: string, date: string): Promise<BriefingView | null> {
+  await ensureSchema();
+  const briefing = await db().query<{ body: string }>(
+    `SELECT body FROM briefings WHERE user_id = $1 AND briefing_date = $2`,
+    [userId, date],
+  );
+  if (!briefing.rowCount) return null;
+
+  const rows = await db().query<{ symbol: string; status: "events" | "quiet"; body: string; events: unknown }>(
+    `SELECT sb.symbol, sb.status, sb.body, sb.events
+     FROM stock_briefs sb
+     WHERE sb.brief_date = $2
+       AND sb.symbol IN (SELECT symbol FROM watchlist WHERE user_id = $1 AND removed_at IS NULL)
+     ORDER BY (sb.status = 'events') DESC, sb.symbol`,
+    [userId, date],
+  );
+  const sections = rows.rows.map((r) => {
+    const ev = (r.events ?? {}) as { filings?: BriefingStockSection["filings"]; priceMove?: BriefingStockSection["priceMove"] };
+    return {
+      symbol: r.symbol,
+      status: r.status,
+      body: r.body,
+      filings: (ev.filings ?? []).map((f) => ({ form: f.form, filedDate: (f as { filedDate?: string; filed_date?: string }).filedDate ?? "", url: f.url, items: f.items ?? "" })),
+      priceMove: ev.priceMove ?? null,
+    };
+  });
+  return { date, body: briefing.rows[0].body, sections };
+}
+
 // --- layer 1 ------------------------------------------------------------------
 
 async function writeStockBrief(

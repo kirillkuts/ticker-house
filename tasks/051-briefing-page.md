@@ -1,6 +1,6 @@
 # 051 — Briefing page (021 phase 6)
 
-**Status:** planned
+**Status:** done
 
 Depends on 049. Email delivery is explicitly out of scope for v1.
 
