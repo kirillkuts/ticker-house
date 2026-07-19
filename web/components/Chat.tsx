@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
@@ -247,11 +247,20 @@ export function Chat({
   // A chat is addressable from birth: the id comes from the /chat/[id] route
   // when revisiting, or is minted here for a fresh conversation.
   const [chatId] = useState(() => routeChatId ?? crypto.randomUUID());
-  const { messages, sendMessage, setMessages, stop, status } = useChat<ChatUIMessage>({
+  const { messages: rawMessages, sendMessage, setMessages, stop, status } = useChat<ChatUIMessage>({
     id: chatId,
     messages: initialMessages,
     transport,
   });
+  // A resumed session can re-deliver a message whose id initialMessages
+  // already holds, and React then sees two children with one key (task 042).
+  // Dedupe by id, keeping the LAST occurrence (freshest state) at the first
+  // occurrence's position; every consumer below reads the deduped list.
+  const messages = useMemo(() => {
+    const byId = new Map<string, ChatUIMessage>();
+    for (const m of rawMessages) byId.set(m.id, m);
+    return rawMessages.length === byId.size ? rawMessages : [...byId.values()];
+  }, [rawMessages]);
 
   // A covered-company tile is a known question with a known answer: fetch the
   // overview directly and inject the exchange as messages, skipping the agent
