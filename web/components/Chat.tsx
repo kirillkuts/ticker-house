@@ -261,12 +261,14 @@ export function Chat({
     window.addEventListener("pointerup", onUp);
   };
 
-  // Group view parts into canvases, one per assistant message. A message gets
-  // a canvas when it auto-qualifies — 2+ view calls or a single BIG widget
-  // (answers that read as dashboards), unless the model edited the canvas
-  // itself (its edit wins) — or when the user pinned one of its views.
-  // Counting CALLS (not finished outputs) moves views over as soon as the
-  // call starts; pending views stay as placeholders, errors drop out.
+  // Group view parts into canvases, one per assistant message. The FIRST
+  // canvas is born from an answer that reads as a dashboard — 2+ view calls
+  // or a single BIG widget. From then on the chat is in canvas mode: every
+  // later answer with any view gets its own canvas, no matter how small.
+  // A message whose canvas the model edited itself is exempt (its edit wins),
+  // and user-pinned views always materialize a canvas. Counting CALLS (not
+  // finished outputs) moves views over as soon as the call starts; pending
+  // views stay as placeholders, errors drop out.
   const canvases: CanvasGroup[] = [];
   messages.forEach((m, mi) => {
     if (m.role !== "assistant") return;
@@ -275,7 +277,10 @@ export function Chat({
       .filter((x) => isViewToolPart(x.part));
     if (views.length === 0) return;
     const modelEdited = m.parts.some((p) => p.type === "tool-edit_canvas");
-    const qualifies = !modelEdited && (views.length >= 2 || views.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
+    const canvasMode = canvases.length > 0;
+    const qualifies =
+      !modelEdited &&
+      (canvasMode || views.length >= 2 || views.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
     const entries = views.filter(
       (x) => (qualifies || pinnedKeys.has(refKey(x.ref))) && !removedKeys.has(refKey(x.ref)) && !isErrorPart(x.part),
     );
