@@ -1,7 +1,7 @@
 "use client";
 
 import type { HomeTicker } from "@/lib/views";
-import { titleCase } from "./widgets/CompanyOverview";
+import { companyDisplayName } from "./widgets/CompanyOverview";
 
 const SUGGESTIONS = [
   "Give me the full overview of NVDA",
@@ -12,7 +12,9 @@ const SUGGESTIONS = [
   "TSLA price action this month",
 ];
 
-// 12-point stat-tile sparkline: de-emphasis line, accent dot on the current value.
+// 12-point stat-tile sparkline: de-emphasis line, accent dot on the current
+// value. Sized via viewBox so it scales down inside narrow cards instead of
+// overflowing; a single close renders as just the dot.
 function Sparkline({ closes }: { closes: number[] }) {
   const w = 64;
   const h = 20;
@@ -21,15 +23,17 @@ function Sparkline({ closes }: { closes: number[] }) {
   const max = Math.max(...closes);
   const span = max - min || 1;
   const pts = closes.map((c, i) => ({
-    x: pad + (i / (closes.length - 1)) * (w - 2 * pad),
+    x: closes.length === 1 ? w - pad : pad + (i / (closes.length - 1)) * (w - 2 * pad),
     y: pad + (1 - (c - min) / span) * (h - 2 * pad),
   }));
   const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const end = pts[pts.length - 1];
   return (
-    <svg width={w} height={h} aria-hidden className="shrink-0">
-      <path d={path} fill="none" stroke="var(--viz-muted)" strokeWidth={1.5}
-            strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox={`0 0 ${w} ${h}`} aria-hidden className="h-5 w-16 min-w-0">
+      {pts.length > 1 && (
+        <path d={path} fill="none" stroke="var(--viz-muted)" strokeWidth={1.5}
+              strokeLinecap="round" strokeLinejoin="round" />
+      )}
       <circle cx={end.x} cy={end.y} r={2.5} fill="var(--viz-1)" />
     </svg>
   );
@@ -37,30 +41,35 @@ function Sparkline({ closes }: { closes: number[] }) {
 
 function TickerCard({ t, onAsk }: { t: HomeTicker; onAsk: (text: string) => void }) {
   const up = t.changePct !== null && t.changePct >= 0;
+  const singleDay = t.changePct === null;
   return (
     <button
       type="button"
       onClick={() => onAsk(`Give me the full overview of ${t.ticker}`)}
-      title={`Open the full ${t.ticker} overview`}
-      className="group rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
+      title={
+        singleDay
+          ? `Open the full ${t.ticker} overview · only one day of price history so far`
+          : `Open the full ${t.ticker} overview`
+      }
+      className="group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold whitespace-nowrap">{t.ticker}</span>
-        {t.changePct === null ? (
-          <span className="text-xs text-neutral-400">—</span>
+        {singleDay ? (
+          <span className="text-[10px] uppercase tracking-wide text-neutral-400 whitespace-nowrap">1 day</span>
         ) : (
           <span
             className="text-xs font-medium whitespace-nowrap"
             style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
           >
-            {up ? "▲" : "▼"} {up ? "+" : ""}{t.changePct.toFixed(1)}%
+            {up ? "▲" : "▼"} {up ? "+" : ""}{t.changePct!.toFixed(1)}%
           </span>
         )}
       </div>
-      <div className="truncate text-xs text-neutral-500">{titleCase(t.companyName)}</div>
+      <div className="truncate text-xs text-neutral-500">{companyDisplayName(t.companyName)}</div>
       <div className="mt-2 flex items-end justify-between gap-2">
-        <span className="text-sm font-medium tabular-nums">${t.lastClose.toFixed(2)}</span>
-        {t.closes.length >= 2 && <Sparkline closes={t.closes} />}
+        <span className="text-sm font-medium tabular-nums whitespace-nowrap">${t.lastClose.toFixed(2)}</span>
+        {t.closes.length >= 1 && <Sparkline closes={t.closes} />}
       </div>
     </button>
   );

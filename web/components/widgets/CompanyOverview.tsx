@@ -71,6 +71,22 @@ export function titleCase(name: string): string {
     .replace(/(^|[\s(&/-])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
 }
 
+// Short display form for cards and headers: title-cased, legal suffixes
+// dropped ("Meta Platforms, Inc." → "Meta Platforms"), known brand casings
+// restored ("Jpmorgan" → "JPMorgan").
+const NAME_FIXES: Record<string, string> = {
+  jpmorgan: "JPMorgan",
+  nvidia: "NVIDIA",
+};
+
+export function companyDisplayName(name: string): string {
+  let n = titleCase(name.trim());
+  n = n.replace(/(?:,?\s+(?:&\s+)?(?:Inc|Incorporated|Corp|Corporation|Company|Co|Ltd|Limited|Plc|LLC|LP)\.?)+$/i, "");
+  n = n.replace(/\bAmazon Com\b/i, "Amazon.com");
+  n = n.split(/\s+/).map((w) => NAME_FIXES[w.toLowerCase()] ?? w).join(" ");
+  return n || titleCase(name.trim());
+}
+
 function Delta({ value, suffix = "" }: { value: number | null; suffix?: string }) {
   if (value === null) return <span className="text-neutral-400">—</span>;
   const up = value >= 0;
