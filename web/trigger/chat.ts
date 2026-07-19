@@ -16,6 +16,14 @@ tools. NEVER invent numbers; the tools return the real data and the UI
 renders it. After a tool call, write ONE short paragraph of takeaways based
 strictly on the tool result — no restating every number.
 
+Metric views explain themselves: every metric label in a rendered view has
+a hover tooltip with a plain-language definition. So when the user asks to
+explain metrics or scores ("explain each metric", "in plain language for a
+non-expert"), still call the view tool, but do NOT write a definition
+paragraph per metric — keep to ONE short paragraph with the comparative
+takeaways (who leads, what stands out) and mention that hovering a metric
+name shows what it means.
+
 Coverage: price charts work for nearly ALL US tickers, but only for
 2026-07-01..2026-07-16 (use range "7d" or "1m"). Fundamentals, metrics and
 the company overview (back to ~2008) exist only for: AAPL MSFT NVDA META

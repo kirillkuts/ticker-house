@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from "recharts";
 import type { MetricQueryResult, MetricColumn } from "@/lib/metric-query";
-import { METRICS, type Unit } from "@/lib/metric-registry";
+import { METRICS, type MetricKey, type Unit } from "@/lib/metric-registry";
 import { titleCase } from "./CompanyOverview";
 import { FollowUps, TickerButton } from "./FollowUps";
 
@@ -50,6 +51,46 @@ export function formatValue(value: unknown, unit: Unit): string {
 type Row = MetricQueryResult["rows"][number];
 type Mode = "table" | "line" | "bar" | "kpi" | "compare";
 
+const TIP_WIDTH = 256;
+
+// A metric label with its plain-language definition on hover. The dotted
+// underline is the affordance. The tooltip is position:fixed because table
+// labels live inside overflow-x-auto containers that would clip it.
+function MetricLabel({ column }: { column: MetricColumn }) {
+  // Results persisted before columns carried `explain` fall back to the registry.
+  const explain = column.explain ?? (METRICS[column.key as MetricKey]?.explain as string | undefined);
+  const [tip, setTip] = useState<{ left: number; top: number } | null>(null);
+  if (!explain) return <>{column.label}</>;
+  return (
+    <span
+      className="cursor-help underline decoration-dotted underline-offset-2 decoration-neutral-400 dark:decoration-neutral-600"
+      onMouseEnter={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const left = Math.min(
+          Math.max(r.left + r.width / 2 - TIP_WIDTH / 2, 8),
+          window.innerWidth - TIP_WIDTH - 8,
+        );
+        setTip({ left, top: r.bottom + 6 });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      {column.label}
+      {tip && (
+        <span
+          className="fixed z-50 rounded-lg border p-2.5 text-left text-[11px] font-normal normal-case leading-snug shadow-md pointer-events-none whitespace-normal"
+          style={{
+            left: tip.left, top: tip.top, width: TIP_WIDTH,
+            background: "var(--tooltip-bg)", borderColor: "var(--tooltip-border)",
+            color: "var(--foreground)",
+          }}
+        >
+          {explain}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function chooseDisplay(data: MetricQueryResult): Mode {
   const hint = data.spec.display;
   const isTs = data.spec.period !== "latest";
@@ -84,7 +125,7 @@ function KpiTiles({ data }: { data: MetricQueryResult }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {data.columns.map((c) => (
           <div key={c.key} className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
-            <div className="text-xs text-neutral-500">{c.label}</div>
+            <div className="text-xs text-neutral-500"><MetricLabel column={c} /></div>
             <div className="text-lg font-semibold">{formatValue(row[c.key], c.unit)}</div>
           </div>
         ))}
@@ -103,7 +144,7 @@ function ResultTable({ data }: { data: MetricQueryResult }) {
             <th className="py-1.5 pr-3">Ticker</th>
             {isTs && <th className="py-1.5 pr-3">Period</th>}
             {data.columns.map((c) => (
-              <th key={c.key} className="py-1.5 pr-3 text-right">{c.label}</th>
+              <th key={c.key} className="py-1.5 pr-3 text-right"><MetricLabel column={c} /></th>
             ))}
           </tr>
         </thead>
@@ -179,7 +220,7 @@ function CompareTable({ data }: { data: MetricQueryResult }) {
             const bestIdx = bests[ci];
             return (
               <tr key={c.key} className="border-b border-neutral-100 dark:border-neutral-900">
-                <td className="py-1.5 pr-3 text-neutral-500">{c.label}</td>
+                <td className="py-1.5 pr-3 text-neutral-500"><MetricLabel column={c} /></td>
                 {companies.map((r, i) => (
                   <td key={i} className={`py-1.5 px-3 text-right tabular-nums ${i === bestIdx ? "font-semibold" : ""}`}>
                     {i === bestIdx && (
@@ -234,7 +275,7 @@ function TsLineChart({ data, column }: { data: MetricQueryResult; column: Metric
     : undefined;
   return (
     <div>
-      <div className="text-sm font-medium mb-1">{column.label}</div>
+      <div className="text-sm font-medium mb-1"><MetricLabel column={column} /></div>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={points}>
           <XAxis
@@ -271,7 +312,7 @@ function LatestBarChart({ data }: { data: MetricQueryResult }) {
   const points = data.rows.map((r) => ({ ticker: String(r.ticker), value: r[column.key] }));
   return (
     <div>
-      <div className="text-sm font-medium mb-1">{column.label}</div>
+      <div className="text-sm font-medium mb-1"><MetricLabel column={column} /></div>
       <ResponsiveContainer width="100%" height={Math.max(160, points.length * 28)}>
         <BarChart data={points} layout="vertical" margin={{ right: 56 }}>
           <XAxis type="number" fontSize={11} tick={{ fill: "var(--viz-muted)" }} axisLine={{ stroke: "var(--viz-axis)" }} tickLine={false} tickFormatter={(v: number) => formatValue(v, column.unit)} />

@@ -27,6 +27,8 @@ export interface MetricColumn {
   key: string;
   label: string;
   unit: Unit;
+  // Plain-language definition shown as a hover tooltip on the column label.
+  explain?: string;
 }
 
 export interface MetricQueryResult {
@@ -263,7 +265,7 @@ export async function runMetricQuery(
       return { error: "No rows matched. Data covers a limited ticker universe; a filter may also have excluded rows with missing (NULL) metrics." };
     return {
       spec,
-      columns: built.keys.map((k) => ({ key: k, label: METRICS[k].label, unit: METRICS[k].unit })),
+      columns: built.keys.map((k) => ({ key: k, label: METRICS[k].label, unit: METRICS[k].unit, explain: METRICS[k].explain })),
       rows,
       ...(note ? { note } : {}),
     };
