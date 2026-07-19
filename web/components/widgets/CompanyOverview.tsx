@@ -7,8 +7,14 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
 import type { CompanyOverviewData } from "@/lib/views";
-import { formatValue } from "./MetricResult";
+import { METRICS, type MetricKey } from "@/lib/metric-registry";
+import { formatValue, MetricLabel } from "./MetricResult";
 import { FollowUps, AskContext } from "./FollowUps";
+
+// Stat-tile label with the registry's plain-language tooltip (see MetricLabel).
+const metricLabel = (key: MetricKey, label?: string) => (
+  <MetricLabel column={{ key, label: label ?? METRICS[key].label, unit: METRICS[key].unit }} />
+);
 
 // One-click head-to-head against any other covered company.
 function CompareWith({ tk, peers }: { tk: string; peers: string[] }) {
@@ -137,7 +143,7 @@ function Section({
   );
 }
 
-function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatTile({ label, value, hint }: { label: React.ReactNode; value: string; hint?: string }) {
   return (
     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3">
       <div className="text-xs text-neutral-500">{label}</div>
@@ -239,10 +245,14 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
 
       {/* Headline KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <StatTile label="Market cap" value={money(t.marketCap)} />
-        <StatTile label="P/E (TTM)" value={ratio(t.peTtm)} />
-        <StatTile label="Revenue (TTM)" value={money(t.revenue)} hint={t.revenueGrowthYoy !== null ? `${t.revenueGrowthYoy >= 0 ? "+" : ""}${t.revenueGrowthYoy.toFixed(1)}% YoY` : undefined} />
-        <StatTile label="Net margin (TTM)" value={pct(t.netMargin)} />
+        <StatTile label={metricLabel("market_cap")} value={money(t.marketCap)} />
+        <StatTile label={metricLabel("pe_ttm")} value={ratio(t.peTtm)} />
+        <StatTile label={metricLabel("revenue", "Revenue (TTM)")} value={money(t.revenue)} hint={t.revenueGrowthYoy !== null ? `${t.revenueGrowthYoy >= 0 ? "+" : ""}${t.revenueGrowthYoy.toFixed(1)}% YoY` : undefined} />
+        <StatTile label={metricLabel("net_margin", "Net margin (TTM)")} value={pct(t.netMargin)} />
+        <StatTile label={metricLabel("net_income", "Net income (TTM)")} value={money(t.netIncome)} />
+        <StatTile label={metricLabel("eps", "EPS (TTM)")} value={usd(t.eps)} hint={t.epsGrowthYoy !== null ? `${t.epsGrowthYoy >= 0 ? "+" : ""}${t.epsGrowthYoy.toFixed(1)}% YoY` : undefined} />
+        <StatTile label={metricLabel("free_cash_flow", "Free cash flow (TTM)")} value={money(t.freeCashFlow)} />
+        <StatTile label={metricLabel("roe")} value={pct(t.roe)} />
       </div>
       <FollowUps
         asks={[
@@ -440,8 +450,8 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
           </LineChart>
         </ResponsiveContainer>
         <div className="grid grid-cols-3 gap-2">
-          <StatTile label="Return on equity" value={pct(t.roe)} />
-          <StatTile label="Return on assets" value={pct(t.roa)} />
+          <StatTile label={metricLabel("roe")} value={pct(t.roe)} />
+          <StatTile label={metricLabel("roa")} value={pct(t.roa)} />
           <StatTile label="FCF margin" value={pct(t.fcfMargin)} hint={`FCF ${money(t.freeCashFlow)} TTM`} />
         </div>
         <FollowUps
@@ -459,12 +469,12 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         deepDive={`Chart ${tk}'s cash, total debt and debt to equity over the last 5 years and explain in plain language how solid the balance sheet is`}
       >
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <StatTile label="Total assets" value={money(t.totalAssets)} hint="everything it owns" />
-          <StatTile label="Total liabilities" value={money(t.totalLiabilities)} hint="everything it owes" />
-          <StatTile label="Equity" value={money(t.equity)} hint="assets minus liabilities" />
-          <StatTile label="Cash" value={money(t.cash)} />
-          <StatTile label="Total debt" value={money(t.totalDebt)} />
-          <StatTile label="Current ratio" value={ratio(t.currentRatio)} />
+          <StatTile label={metricLabel("total_assets")} value={money(t.totalAssets)} hint="everything it owns" />
+          <StatTile label={metricLabel("total_liabilities")} value={money(t.totalLiabilities)} hint="everything it owes" />
+          <StatTile label={metricLabel("shareholders_equity", "Equity")} value={money(t.equity)} hint="assets minus liabilities" />
+          <StatTile label={metricLabel("cash_and_equivalents", "Cash")} value={money(t.cash)} />
+          <StatTile label={metricLabel("total_debt")} value={money(t.totalDebt)} />
+          <StatTile label={metricLabel("current_ratio")} value={ratio(t.currentRatio)} />
         </div>
         <div>
           <div className="text-xs text-neutral-500 mb-1">Debt / equity by fiscal year</div>

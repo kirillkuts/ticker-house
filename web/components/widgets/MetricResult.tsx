@@ -56,7 +56,7 @@ const TIP_WIDTH = 256;
 // A metric label with its plain-language definition on hover. The dotted
 // underline is the affordance. The tooltip is position:fixed because table
 // labels live inside overflow-x-auto containers that would clip it.
-function MetricLabel({ column }: { column: MetricColumn }) {
+export function MetricLabel({ column }: { column: MetricColumn }) {
   // Results persisted before columns carried `explain` fall back to the registry.
   const explain = column.explain ?? (METRICS[column.key as MetricKey]?.explain as string | undefined);
   const [tip, setTip] = useState<{ left: number; top: number } | null>(null);
