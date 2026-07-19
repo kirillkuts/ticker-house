@@ -1,6 +1,6 @@
 # 047 — Filings ingestion from EDGAR (021 phase 2)
 
-**Status:** planned
+**Status:** done
 
 New sync following the existing pattern: `src/lib/sync-filings.ts` + `src/cli/sync-filings.ts`
 + `"sync:filings": "tsx src/cli/sync-filings.ts"` in package.json.

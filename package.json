@@ -9,7 +9,8 @@
     "sync:securities": "tsx src/cli/sync-securities.ts",
     "sync:prices": "tsx src/cli/sync-prices.ts",
     "sync:financials": "tsx src/cli/sync-financials.ts",
-    "sync:segments": "tsx src/cli/sync-segments.ts"
+    "sync:segments": "tsx src/cli/sync-segments.ts",
+    "sync:filings": "tsx src/cli/sync-filings.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,10 +18,12 @@
   "description": "",
   "dependencies": {
     "@clickhouse/client": "^1.23.1",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2"
   },

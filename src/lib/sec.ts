@@ -10,6 +10,15 @@ export interface SecTickerRow {
   exchange: string;
 }
 
+// filings.recent is column-oriented: parallel arrays, index i = one filing.
+export interface SecRecentFilings {
+  accessionNumber: string[];
+  filingDate: string[];
+  form: string[];
+  items: string[];
+  primaryDocument: string[];
+}
+
 export interface SecSubmissions {
   cik: string;
   name: string;
@@ -20,6 +29,7 @@ export interface SecSubmissions {
   addresses?: {
     business?: { city?: string; stateOrCountry?: string };
   };
+  filings?: { recent?: SecRecentFilings };
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -50,6 +60,21 @@ export async function fetchSecSubmissions(cik: number): Promise<SecSubmissions |
   const padded = String(cik).padStart(10, "0");
   try {
     return await fetchJson<SecSubmissions>(`https://data.sec.gov/submissions/CIK${padded}.json`);
+  } catch {
+    return null;
+  }
+}
+
+export function filingDocumentUrl(cik: number, accession: string, primaryDocument: string): string {
+  return `https://www.sec.gov/Archives/edgar/data/${cik}/${accession.replace(/-/g, "")}/${primaryDocument}`;
+}
+
+/** Fetch a filing's primary document (HTML or text). Null on any failure. */
+export async function fetchFilingDocument(cik: number, accession: string, primaryDocument: string): Promise<string | null> {
+  try {
+    const res = await fetch(filingDocumentUrl(cik, accession, primaryDocument), { headers: UA });
+    if (!res.ok) return null;
+    return await res.text();
   } catch {
     return null;
   }
