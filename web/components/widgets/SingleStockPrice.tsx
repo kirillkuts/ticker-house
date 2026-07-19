@@ -90,7 +90,7 @@ export function SingleStockPrice({ data }: { data: SingleStockPriceData }) {
             ? [
                 { label: "Full company overview", prompt: `Give me the full overview of ${data.ticker}` },
                 { label: "Fundamentals", prompt: `Show ${data.ticker}'s annual fundamentals` },
-                { label: "Is the price justified?", prompt: `Is ${data.ticker}'s current price justified by its earnings? Compare its P/E with the covered stocks` },
+                { label: "Is the price justified?", prompt: `Compare ${data.ticker}'s P/E and EPS against the covered stocks — is the current price justified?` },
               ]
             : [
                 // No fundamentals for this ticker — only offer what works.

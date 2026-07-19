@@ -218,7 +218,7 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
       </div>
       <FollowUps
         asks={[
-          { label: "Is it a good company?", prompt: `Based on this overview, is ${tk} a good company? What are the strengths and weaknesses?` },
+          { label: "Is it a good company?", prompt: `Compare ${tk} against the covered stocks on net margin, return on equity, revenue growth and debt to equity, then give your verdict: is it a good company?` },
           { label: "Rank peers by market cap", prompt: "Rank the covered stocks by market cap" },
         ]}
       />
@@ -247,8 +247,8 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
           </div>
           <FollowUps
             asks={[
-              { label: "How does it make money?", prompt: `Based on the overview data, how does ${tk} make money and what drives its revenue?` },
-              { label: "Closest business peers", prompt: `Which of the covered stocks are ${tk}'s closest business peers? Compare them on the key metrics.` },
+              { label: "Revenue & profit trend", prompt: `Chart ${tk}'s revenue and net income over the last 5 years` },
+              { label: "Closest business peers", prompt: `Compare ${tk} with its closest covered peers on P/E, net margin and revenue growth` },
             ]}
           />
         </Section>
@@ -281,7 +281,7 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         </div>
         <FollowUps
           asks={[
-            { label: "Explain these scores", prompt: `Explain ${tk}'s five scores — what is behind each one and where does it lag its peers?` },
+            { label: "Metrics behind the scores", prompt: `Show the metrics behind ${tk}'s scores vs the covered stocks: P/E, net margin, return on equity, revenue growth and debt to equity` },
             { label: "Compare vs all peers", prompt: `Compare ${tk} with the other covered stocks on net margin, return on equity and revenue growth` },
           ]}
         />
@@ -304,7 +304,7 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         <FollowUps
           asks={[
             { label: "Full price dashboard", prompt: `Show the full price dashboard for ${tk} over the last month` },
-            { label: "Price vs earnings", prompt: `Is ${tk}'s current price justified by its earnings? Look at P/E vs peers and EPS growth` },
+            { label: "Price vs earnings", prompt: `Compare ${tk}'s P/E and EPS against the covered stocks — is the current price justified?` },
           ]}
         />
       </Section>

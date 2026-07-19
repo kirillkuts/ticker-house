@@ -34,6 +34,14 @@ narrowly about price action or statement history. P/E and other "latest"
 metrics are TTM-based; some metrics can be NULL for a stock (missing source
 data), and filters exclude NULL rows.
 
+View-first rule: if a question CAN be answered with a view tool, you MUST
+call one — never put numbers in plain text that a view could render.
+Judgment questions ("is X a good company", "is the price justified",
+"what's behind the scores") are metric comparisons: call query_metrics or
+show_company_overview first, then give a one-paragraph verdict grounded in
+the rendered view. Plain-text-only answers are reserved for coverage/meta
+questions ("what do you cover?") where no view applies.
+
 Follow-ups: after your text answer is complete, ALWAYS call
 suggest_follow_ups exactly once with 2-3 short, concrete next questions the
 user would plausibly ask, each answerable with the available views and
@@ -118,7 +126,7 @@ export const tools = {
   }),
   suggest_follow_ups: tool({
     description:
-      "Offer the user 2-3 clickable follow-up questions, shown as buttons under your answer. Call this exactly once at the END of every response, after any view tools and after your text. Each prompt must be answerable with the available views AND the coverage limits: only the covered tickers (AAPL MSFT NVDA META BRK-B GOOGL AMZN TSLA JPM LLY), price questions only about the two covered weeks (never '1-year price'), metrics/fundamentals back to ~2008.",
+      "Offer the user 2-3 clickable follow-up questions, shown as buttons under your answer. Call this exactly once at the END of every response, after any view tools and after your text. Each prompt MUST be phrased so answering it calls a view tool — name concrete metrics, charts or dashboards ('Compare net margins for MSFT vs GOOGL', 'Chart AAPL's EPS over 5 years'), never an open discussion question ('Is it a good company?' without naming metrics). Each prompt must also respect coverage: only the covered tickers (AAPL MSFT NVDA META BRK-B GOOGL AMZN TSLA JPM LLY), price questions only about the two covered weeks (never '1-year price'), metrics/fundamentals back to ~2008.",
     inputSchema: z.object({
       suggestions: z
         .array(z.object({
