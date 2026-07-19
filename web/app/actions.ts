@@ -3,6 +3,7 @@
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats } from "@/lib/chats";
+import { companyOverview } from "@/lib/views";
 
 export const startChatSession = chat.createStartSessionAction("ticker-chat");
 
@@ -15,6 +16,12 @@ export async function saveChatAction(chatId: string, title: string, messagesJson
 // Fresh recent-chats list for the header dropdown (fetched on open).
 export async function listRecentChats() {
   return recentChats(12);
+}
+
+// Direct company-overview fetch for the home tiles: the question and the
+// tool call are known in advance, so the client skips the agent roundtrip.
+export async function fetchCompanyOverview(ticker: string) {
+  return companyOverview(ticker);
 }
 
 export async function mintChatAccessToken(chatId: string) {

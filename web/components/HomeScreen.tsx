@@ -41,13 +41,13 @@ function Sparkline({ closes }: { closes: number[] }) {
   );
 }
 
-function TickerCard({ t, onAsk }: { t: HomeTicker; onAsk: (text: string) => void }) {
+function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: string) => void }) {
   const up = t.changePct !== null && t.changePct >= 0;
   const singleDay = t.changePct === null;
   return (
     <button
       type="button"
-      onClick={() => onAsk(`Give me the full overview of ${t.ticker}`)}
+      onClick={() => onOpen(t.ticker)}
       title={
         singleDay
           ? `Open the full ${t.ticker} overview · only one day of price history so far`
@@ -81,13 +81,17 @@ export function HomeScreen({
   home,
   recent = [],
   onAsk,
+  onTickerTile,
   composer,
 }: {
   home: HomeTicker[];
   recent?: RecentChat[];
   onAsk: (text: string) => void;
+  // Instant path for company tiles; falls back to asking the agent.
+  onTickerTile?: (ticker: string) => void;
   composer: React.ReactNode;
 }) {
+  const openTile = onTickerTile ?? ((tk: string) => onAsk(`Give me the full overview of ${tk}`));
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-8 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
@@ -144,7 +148,7 @@ export function HomeScreen({
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
             {home.map((t) => (
-              <TickerCard key={t.ticker} t={t} onAsk={onAsk} />
+              <TickerCard key={t.ticker} t={t} onOpen={openTile} />
             ))}
           </div>
           <p className="text-center text-[11px] text-neutral-400">

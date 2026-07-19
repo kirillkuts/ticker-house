@@ -7,7 +7,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { SingleStockPriceData, FundamentalsData, CompanyOverviewData, HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview } from "@/app/actions";
 import type { MetricQueryResult } from "@/lib/metric-query";
 import { SingleStockPrice } from "./widgets/SingleStockPrice";
 import { Fundamentals } from "./widgets/Fundamentals";
@@ -191,11 +191,43 @@ export function Chat({
   // A chat is addressable from birth: the id comes from the /chat/[id] route
   // when revisiting, or is minted here for a fresh conversation.
   const [chatId] = useState(() => routeChatId ?? crypto.randomUUID());
-  const { messages, sendMessage, stop, status } = useChat<ChatUIMessage>({
+  const { messages, sendMessage, setMessages, stop, status } = useChat<ChatUIMessage>({
     id: chatId,
     messages: initialMessages,
     transport,
   });
+
+  // A covered-company tile is a known question with a known answer: fetch the
+  // overview directly and inject the exchange as messages, skipping the agent
+  // roundtrip. The agent's server-side history won't contain this exchange —
+  // the [canvas] block on the next question tells it what's on screen.
+  const instantOverview = async (ticker: string) => {
+    const text = `Give me the full overview of ${ticker}`;
+    try {
+      const out = await fetchCompanyOverview(ticker);
+      if (out && typeof out === "object" && "error" in out) throw new Error(out.error);
+      const stamp = Date.now();
+      setMessages((prev) => [
+        ...prev,
+        { id: `local-u-${stamp}`, role: "user" as const, parts: [{ type: "text" as const, text }] },
+        {
+          id: `local-a-${stamp}`,
+          role: "assistant" as const,
+          parts: [
+            {
+              type: "tool-show_company_overview" as const,
+              toolCallId: `local-call-${stamp}`,
+              state: "output-available" as const,
+              input: { ticker },
+              output: out,
+            },
+          ],
+        },
+      ]);
+    } catch {
+      sendMessage({ text }); // no direct data — let the agent handle it
+    }
+  };
 
   // As soon as the conversation exists, move the URL to its permanent home
   // without a navigation (a router push would remount and drop the stream).
@@ -444,7 +476,13 @@ export function Chat({
             <ChatHistory />
           </Header>
         </div>
-        <HomeScreen home={home} recent={recent} onAsk={(text) => sendMessage({ text })} composer={composer} />
+        <HomeScreen
+          home={home}
+          recent={recent}
+          onAsk={(text) => sendMessage({ text })}
+          onTickerTile={instantOverview}
+          composer={composer}
+        />
       </div>
     );
   }

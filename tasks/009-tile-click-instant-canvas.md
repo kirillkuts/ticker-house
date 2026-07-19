@@ -1,6 +1,8 @@
 # 009 — Company tile click renders the overview canvas instantly
 
-**Status:** todo
+**Status:** done
+
+Resolution: new `fetchCompanyOverview` server action wraps `companyOverview()` directly. Tile clicks call `instantOverview(ticker)` in Chat.tsx: it fetches the data (one ClickHouse roundtrip) and injects a synthetic user message + assistant message carrying a `tool-show_company_overview` part via setMessages — so the canvas grouping (big view → instant canvas), URL swap, persistence/restore, and [canvas] block all work unchanged. On a fetch error it falls back to sending the question to the agent. Suggestion chips still go through the agent. Verified: companyOverview('MSFT') returns clean data, typecheck passes. Tradeoff noted in code: the agent's server-side history lacks this exchange; the [canvas] block covers it on the next question.
 
 From user: "i want initial click on the company tile to go straight to canvas bypassing latency of the ai agent making a call (since I already know what the call will be)".
 
