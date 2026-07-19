@@ -471,19 +471,37 @@ export interface HomeTicker {
   closes: number[];
   lastClose: number;
   changePct: number | null; // null when only one sane price point exists
+  revenueTtm: number | null; // for the "Top revenue" sort on the home grid
 }
 
 export async function homeSnapshot(): Promise<HomeTicker[]> {
-  const rows = await queryRows<{ ticker: string; companyName: string; sector: string; date: string; close: number; symbolMatch: number }>(
-    `SELECT s.ticker AS ticker, s.company_name AS companyName, s.sector AS sector,
-            toString(p.trade_date) AS date, toFloat64(p.close) AS close,
-            replaceAll(p.source_symbol, '.', '-') = upper(s.ticker) AS symbolMatch
-     FROM daily_prices AS p FINAL
-     INNER JOIN securities AS s FINAL
-       ON s.security_id = p.security_id AND s.is_active
-     WHERE p.security_id IN (SELECT DISTINCT security_id FROM financial_periods)
-     ORDER BY ticker, p.trade_date`,
-  );
+  const [rows, revSnapshot] = await Promise.all([
+    queryRows<{ ticker: string; companyName: string; sector: string; date: string; close: number; symbolMatch: number }>(
+      `SELECT s.ticker AS ticker, s.company_name AS companyName, s.sector AS sector,
+              toString(p.trade_date) AS date, toFloat64(p.close) AS close,
+              replaceAll(p.source_symbol, '.', '-') = upper(s.ticker) AS symbolMatch
+       FROM daily_prices AS p FINAL
+       INNER JOIN securities AS s FINAL
+         ON s.security_id = p.security_id AND s.is_active
+       WHERE p.security_id IN (SELECT DISTINCT security_id FROM financial_periods)
+       ORDER BY ticker, p.trade_date`,
+    ),
+    // TTM revenue per ticker (last 4 quarters), for the "Top revenue" sort.
+    // Queried directly: runMetricQuery caps at 50 rows, fewer than the universe.
+    queryRows<{ ticker: string; revenueTtm: number }>(
+      `SELECT s.ticker AS ticker, sum(toFloat64OrNull(toString(fp.revenue))) AS revenueTtm
+       FROM (
+         SELECT security_id, revenue,
+                row_number() OVER (PARTITION BY security_id ORDER BY period_end DESC) AS rn
+         FROM financial_periods FINAL
+         WHERE period_type = 'quarter' AND revenue IS NOT NULL
+       ) AS fp
+       INNER JOIN securities AS s FINAL ON s.security_id = fp.security_id AND s.is_active
+       WHERE fp.rn <= 4
+       GROUP BY ticker`,
+    ),
+  ]);
+  const revenueOf = new Map<string, number | null>(revSnapshot.map((r) => [r.ticker, r.revenueTtm]));
   const byTicker = new Map<string, { companyName: string; sector: string; rows: { close: number; symbolMatch: number }[] }>();
   for (const r of rows) {
     if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, { companyName: r.companyName, sector: r.sector, rows: [] });
@@ -499,10 +517,11 @@ export async function homeSnapshot(): Promise<HomeTicker[]> {
         closes,
         lastClose: closes[closes.length - 1],
         changePct: closes.length >= 2 ? (closes[closes.length - 1] / closes[0] - 1) * 100 : null,
+        revenueTtm: revenueOf.get(ticker) ?? null,
       };
     })
     .filter((t) => t.closes.length >= 1)
-    .sort((a, b) => (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity));
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
 
 // ---------------------------------------------------------------------------

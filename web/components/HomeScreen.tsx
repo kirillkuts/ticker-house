@@ -1,9 +1,27 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
 import { relativeTime } from "@/lib/format";
 import { companyDisplayName } from "./widgets/CompanyOverview";
+
+// Sort choice for the covered-companies grid, persisted across reloads.
+// localStorage is the source of truth; useSyncExternalStore avoids both the
+// SSR hydration mismatch and setState-in-effect.
+type HomeSort = "az" | "revenue";
+let sortListeners: (() => void)[] = [];
+const subscribeSort = (cb: () => void) => {
+  sortListeners.push(cb);
+  return () => {
+    sortListeners = sortListeners.filter((l) => l !== cb);
+  };
+};
+const readSort = (): HomeSort => (localStorage.getItem("homeSort") === "revenue" ? "revenue" : "az");
+const writeSort = (s: HomeSort) => {
+  localStorage.setItem("homeSort", s);
+  sortListeners.forEach((l) => l());
+};
 
 const SUGGESTIONS = [
   "Give me the full overview of NVDA",
@@ -92,6 +110,11 @@ export function HomeScreen({
   composer: React.ReactNode;
 }) {
   const openTile = onTickerTile ?? ((tk: string) => onAsk(`Give me the full overview of ${tk}`));
+  const sort = useSyncExternalStore(subscribeSort, readSort, () => "az" as HomeSort);
+  const sorted =
+    sort === "revenue"
+      ? [...home].sort((a, b) => (b.revenueTtm ?? -Infinity) - (a.revenueTtm ?? -Infinity))
+      : [...home].sort((a, b) => a.ticker.localeCompare(b.ticker));
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-8 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
@@ -142,12 +165,31 @@ export function HomeScreen({
 
       {home.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 className="text-sm font-semibold">Covered companies</h2>
-            <span className="text-xs text-neutral-500">last two weeks · tap one for the full picture</span>
+            <div className="flex items-baseline gap-3 text-xs">
+              <div className="flex gap-1" role="group" aria-label="Sort companies">
+                {([["az", "A–Z"], ["revenue", "Top revenue"]] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => writeSort(key)}
+                    aria-pressed={sort === key}
+                    className={`rounded-md border px-2 py-0.5 transition-colors ${
+                      sort === key
+                        ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "border-neutral-200 text-neutral-500 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-neutral-500">last two weeks · tap one for the full picture</span>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-            {home.map((t) => (
+            {sorted.map((t) => (
               <TickerCard key={t.ticker} t={t} onOpen={openTile} />
             ))}
           </div>
