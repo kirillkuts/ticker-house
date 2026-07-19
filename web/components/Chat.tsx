@@ -224,7 +224,7 @@ export function Chat({
     try {
       const out = await fetchCompanyOverview(ticker);
       if (out && typeof out === "object" && "error" in out) throw new Error(out.error);
-      const stamp = Date.now();
+      const stamp = crypto.randomUUID();
       setMessages((prev) => [
         ...prev,
         { id: `local-u-${stamp}`, role: "user" as const, parts: [{ type: "text" as const, text }] },
@@ -321,6 +321,8 @@ export function Chat({
   // finished outputs) moves views over as soon as the call starts; pending
   // views stay as placeholders, errors drop out.
   const canvases: CanvasGroup[] = [];
+  // Re-asking the same question must not yield two identically-named tabs.
+  const labelCounts = new Map<string, number>();
   messages.forEach((m, mi) => {
     if (m.role !== "assistant") return;
     const views = m.parts
@@ -348,6 +350,9 @@ export function Chat({
     }
     if (!label) label = [...new Set(entries.flatMap((x) => partTickers(x.part)))].join(", ") || `Answer ${canvases.length + 1}`;
     if (label.length > 40) label = `${label.slice(0, 40)}…`;
+    const nth = (labelCounts.get(label) ?? 0) + 1;
+    labelCounts.set(label, nth);
+    if (nth > 1) label = `${label} · ${nth}`;
     canvases.push({ id: m.id, label, entries });
   });
 
@@ -660,7 +665,7 @@ export function Chat({
                     className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors ${
                       c.id === activeCanvas?.id
                         ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                        : "border-neutral-200 text-neutral-500 hover:border-blue-400 dark:border-neutral-800"
+                        : "border-neutral-200 text-neutral-500 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"
                     }`}
                   >
                     {c.label}
