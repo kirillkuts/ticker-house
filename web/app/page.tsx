@@ -5,10 +5,15 @@ import { recentChats } from "@/lib/chats";
 // The home cards read live prices from ClickHouse on every request.
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const [home, recent] = await Promise.all([
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ ask?: string }>;
+}) {
+  const [home, recent, { ask }] = await Promise.all([
     homeSnapshot().catch(() => []),
     recentChats().catch(() => []),
+    searchParams,
   ]);
-  return <Chat home={home} recent={recent} />;
+  return <Chat home={home} recent={recent} initialAsk={ask} />;
 }

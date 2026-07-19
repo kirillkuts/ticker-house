@@ -1,6 +1,8 @@
 # 019 — Save widgets to a live dashboard, independent of chat
 
-**Status:** todo
+**Status:** done
+
+Resolution: widgets save as recipes (tool + input JSON) to a new ClickHouse `dashboard_widgets` table; `/dashboard` re-runs every recipe server-side on each load (lib/dashboard.ts runDashboardRecipe → the view functions), so data is always current. A "☆ save" button appears on hover next to the existing actions on both inline and canvas views; "✓ saved" confirms. Header gained a permanent Dashboard link (grid icon, label collapses per task 015). Chips on saved widgets work: the dashboard provides AskContext whose ask() navigates to `/?ask=<question>`, and the home Chat sends the seeded question on mount (fast model). Per-widget remove issues a lightweight DELETE. Refactor: view-tool → widget mapping extracted to components/ViewBody.tsx, shared by ToolPart and the dashboard so they can't drift. Verified live: seeded price-chart + metrics recipes rendered with fresh data at /dashboard, removal returns the empty state, typecheck passes.
 
 From user (screenshot: metric-comparison widget on a canvas): allow saving widgets to a live dashboard that is available separately, without a chat. Saved widgets keep their pre-prompted question chips, and clicking a chip opens a chat.
 

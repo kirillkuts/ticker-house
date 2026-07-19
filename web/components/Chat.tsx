@@ -5,16 +5,10 @@ import { useChat } from "@ai-sdk/react";
 import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
-import type { SingleStockPriceData, FundamentalsData, CompanyOverviewData, ExpenseBreakdownData, SegmentBreakdownData, HomeTicker } from "@/lib/views";
+import type { HomeTicker } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview } from "@/app/actions";
-import type { MetricQueryResult } from "@/lib/metric-query";
-import { SingleStockPrice } from "./widgets/SingleStockPrice";
-import { Fundamentals } from "./widgets/Fundamentals";
-import { MetricResult } from "./widgets/MetricResult";
-import { CompanyOverview } from "./widgets/CompanyOverview";
-import { ExpenseBreakdown } from "./widgets/ExpenseBreakdown";
-import { SegmentBreakdown } from "./widgets/SegmentBreakdown";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction } from "@/app/actions";
+import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { Header } from "./Header";
 import { ChatHistory } from "./ChatHistory";
@@ -40,41 +34,21 @@ function ToolError({ error, ticker }: { error: string; ticker?: string }) {
   );
 }
 
+const VIEW_TOOL_TYPES = new Set([
+  "tool-show_company_overview",
+  "tool-show_price_chart",
+  "tool-show_fundamentals",
+  "tool-show_expense_breakdown",
+  "tool-show_segments",
+  "tool-query_metrics",
+]);
+
 function ToolPart({ part }: { part: Part }) {
-  if (part.type === "tool-show_company_overview" && part.state === "output-available") {
-    const out = part.output as CompanyOverviewData | { error: string };
-    if ("error" in out)
-      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
-    return <CompanyOverview data={out} />;
-  }
-  if (part.type === "tool-show_price_chart" && part.state === "output-available") {
-    const out = part.output as SingleStockPriceData | { error: string };
-    if ("error" in out)
-      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
-    return <SingleStockPrice data={out} />;
-  }
-  if (part.type === "tool-show_fundamentals" && part.state === "output-available") {
-    const out = part.output as FundamentalsData | { error: string };
-    if ("error" in out)
-      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
-    return <Fundamentals data={out} />;
-  }
-  if (part.type === "tool-show_expense_breakdown" && part.state === "output-available") {
-    const out = part.output as ExpenseBreakdownData | { error: string };
-    if ("error" in out)
-      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
-    return <ExpenseBreakdown data={out} />;
-  }
-  if (part.type === "tool-show_segments" && part.state === "output-available") {
-    const out = part.output as SegmentBreakdownData | { error: string };
-    if ("error" in out)
-      return <ToolError error={out.error} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
-    return <SegmentBreakdown data={out} />;
-  }
-  if (part.type === "tool-query_metrics" && part.state === "output-available") {
-    const out = part.output as MetricQueryResult | { error: string };
-    if ("error" in out) return <ToolError error={out.error} />;
-    return <MetricResult data={out} />;
+  if (VIEW_TOOL_TYPES.has(part.type) && "state" in part && part.state === "output-available") {
+    const out = part.output as { error?: string } | undefined;
+    if (out && typeof out === "object" && "error" in out)
+      return <ToolError error={String(out.error)} ticker={(part.input as { ticker?: string } | undefined)?.ticker} />;
+    return <ViewBody tool={part.type.slice("tool-".length)} output={part.output} />;
   }
   if (part.type === "tool-suggest_follow_ups") {
     // Model-generated next questions, rendered as the same chips widgets use.
@@ -194,11 +168,14 @@ export function Chat({
   recent = [],
   chatId: routeChatId,
   initialMessages = [],
+  initialAsk,
 }: {
   home?: HomeTicker[];
   recent?: RecentChat[];
   chatId?: string;
   initialMessages?: ChatUIMessage[];
+  // Question to send on mount (e.g. a dashboard chip seeding a new chat).
+  initialAsk?: string;
 }) {
   const transport = useTriggerChatTransport<typeof tickerChat>({
     task: "ticker-chat",
@@ -245,6 +222,28 @@ export function Chat({
     } catch {
       sendMessage({ text }, { metadata: { speed: "fast" } }); // no direct data — a pre-prompted ask, so the fast model handles it
     }
+  };
+
+  // A seeded question (dashboard chip → new chat) fires once on mount.
+  const askedInitial = useRef(false);
+  useEffect(() => {
+    if (!initialAsk || askedInitial.current || messages.length > 0) return;
+    askedInitial.current = true;
+    sendMessage({ text: initialAsk }, { metadata: { speed: "fast" } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAsk]);
+
+  // Widgets saved to the live dashboard this session, keyed by view ref.
+  const [savedWidgets, setSavedWidgets] = useState<Set<string>>(new Set());
+  const saveWidget = (r: ViewRef, part: Part) => {
+    const key = refKey(r);
+    if (savedWidgets.has(key)) return;
+    setSavedWidgets((prev) => new Set(prev).add(key));
+    saveDashboardWidgetAction(
+      crypto.randomUUID(),
+      part.type.slice("tool-".length),
+      JSON.stringify(("input" in part ? part.input : undefined) ?? {}),
+    ).catch(() => {});
   };
 
   // As soon as the conversation exists, move the URL to its permanent home
@@ -598,13 +597,23 @@ export function Chat({
                 return (
                   <div key={i} className="relative group">
                     {isViewPart(part) && (
-                      <button
-                        type="button"
-                        onClick={() => pinToCanvas(ref)}
-                        className="absolute right-3 top-5 z-10 rounded-lg border px-2 py-1 text-xs transition-opacity border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 opacity-0 group-hover:opacity-100 hover:border-blue-400 hover:text-blue-600"
-                      >
-                        ▦ canvas
-                      </button>
+                      <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => saveWidget(ref, part)}
+                          title="Save to the live dashboard"
+                          className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+                        >
+                          {savedWidgets.has(refKey(ref)) ? "✓ saved" : "☆ save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => pinToCanvas(ref)}
+                          className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+                        >
+                          ▦ canvas
+                        </button>
+                      </div>
                     )}
                     <ToolPart part={part} />
                   </div>
@@ -676,13 +685,23 @@ export function Chat({
             <div className="flex-1 overflow-y-auto p-4">
               {canvasParts.map(({ ref, part }) => (
                 <div key={refKey(ref)} className="chip-in relative group">
-                  <button
-                    type="button"
-                    onClick={() => removeFromCanvas(ref)}
-                    className="absolute right-3 top-5 z-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 opacity-0 group-hover:opacity-100 hover:border-red-400 hover:text-red-500"
-                  >
-                    remove
-                  </button>
+                  <div className="absolute right-3 top-5 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => saveWidget(ref, part)}
+                      title="Save to the live dashboard"
+                      className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+                    >
+                      {savedWidgets.has(refKey(ref)) ? "✓ saved" : "☆ save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFromCanvas(ref)}
+                      className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-red-400 hover:text-red-500"
+                    >
+                      remove
+                    </button>
+                  </div>
                   <ToolPart part={part} />
                 </div>
               ))}

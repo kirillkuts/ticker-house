@@ -22,7 +22,22 @@ export function Header({ children }: { children?: React.ReactNode }) {
         <Logo />
         <span className="hidden text-lg font-semibold tracking-tight @sm:inline">TickerHouse</span>
       </a>
-      <div className="flex items-center gap-2">{children}</div>
+      <div className="flex items-center gap-2">
+        <a
+          href="/dashboard"
+          title="Live dashboard of saved widgets"
+          className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="shrink-0">
+            <rect x="2" y="2" width="5" height="5" rx="1" />
+            <rect x="9" y="2" width="5" height="5" rx="1" />
+            <rect x="2" y="9" width="5" height="5" rx="1" />
+            <rect x="9" y="9" width="5" height="5" rx="1" />
+          </svg>
+          <span className="hidden @lg:inline">Dashboard</span>
+        </a>
+        {children}
+      </div>
     </header>
   );
 }

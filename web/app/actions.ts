@@ -4,6 +4,7 @@ import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats } from "@/lib/chats";
 import { companyOverview } from "@/lib/views";
+import { saveDashboardWidget, removeDashboardWidget } from "@/lib/dashboard";
 
 export const startChatSession = chat.createStartSessionAction("ticker-chat");
 
@@ -22,6 +23,15 @@ export async function listRecentChats() {
 // tool call are known in advance, so the client skips the agent roundtrip.
 export async function fetchCompanyOverview(ticker: string) {
   return companyOverview(ticker);
+}
+
+// Save a widget recipe (tool + input) to the live dashboard / remove one.
+export async function saveDashboardWidgetAction(widgetId: string, tool: string, inputJson: string) {
+  await saveDashboardWidget(widgetId, tool, inputJson);
+}
+
+export async function removeDashboardWidgetAction(widgetId: string) {
+  await removeDashboardWidget(widgetId);
 }
 
 export async function mintChatAccessToken(chatId: string) {
