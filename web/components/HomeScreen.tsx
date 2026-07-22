@@ -2,8 +2,6 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import type { HomeTicker, WatchlistQuote } from "@/lib/views";
-import type { RecentChat } from "@/lib/chats";
-import { relativeTime } from "@/lib/format";
 import { CATEGORIES, categorySlugOf } from "@/lib/categories";
 import { companyDisplayName } from "./widgets/CompanyOverview";
 import { WatchStar } from "./WatchStar";
@@ -140,7 +138,6 @@ function PriceOnlyCard({ q, onOpen }: { q: WatchlistQuote; onOpen: (symbol: stri
 
 export function HomeScreen({
   home,
-  recent = [],
   watchlist = [],
   watchlistExtra = [],
   onAsk,
@@ -149,7 +146,6 @@ export function HomeScreen({
   composer,
 }: {
   home: HomeTicker[];
-  recent?: RecentChat[];
   watchlist?: string[];
   watchlistExtra?: WatchlistQuote[];
   onAsk: (text: string) => void;
@@ -222,24 +218,6 @@ export function HomeScreen({
                 />
               ),
             )}
-          </div>
-        </div>
-      )}
-
-      {recent.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold">Recent chats</h2>
-          <div className="flex flex-col divide-y divide-neutral-100 dark:divide-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
-            {recent.map((c) => (
-              <a
-                key={c.chatId}
-                href={`/chat/${c.chatId}`}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
-              >
-                <span className="truncate">{c.title || "Untitled chat"}</span>
-                <span className="shrink-0 text-xs text-neutral-400">{relativeTime(c.updatedAt)}</span>
-              </a>
-            ))}
           </div>
         </div>
       )}

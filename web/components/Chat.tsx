@@ -6,7 +6,6 @@ import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { HomeTicker, WatchlistQuote } from "@/lib/views";
-import type { RecentChat } from "@/lib/chats";
 import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, fetchCategorySnapshot, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction, listDashboardsAction, createDashboardAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
@@ -249,7 +248,6 @@ interface CanvasGroup {
 
 export function Chat({
   home = [],
-  recent = [],
   chatId: routeChatId,
   initialMessages = [],
   initialAsk,
@@ -257,7 +255,6 @@ export function Chat({
   watchlistExtra = [],
 }: {
   home?: HomeTicker[];
-  recent?: RecentChat[];
   chatId?: string;
   initialMessages?: ChatUIMessage[];
   // Question to send on mount (e.g. a dashboard chip seeding a new chat).
@@ -863,7 +860,6 @@ export function Chat({
         </div>
         <HomeScreen
           home={home}
-          recent={recent}
           watchlist={watchlist}
           watchlistExtra={watchlistExtra}
           onAsk={(text) => sendMessage({ text }, { metadata: { speed: "fast" } })}

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { Chat } from "@/components/Chat";
 import { homeSnapshot, watchlistQuotes, type WatchlistQuote } from "@/lib/views";
-import { recentChats } from "@/lib/chats";
 import { currentUser } from "@/lib/auth";
 import { getWatchlist } from "@/lib/watchlist";
 
@@ -15,9 +14,8 @@ export default async function Home({
 }) {
   const user = await currentUser();
   if (!user) redirect("/login");
-  const [home, recent, watch, { ask }] = await Promise.all([
+  const [home, watch, { ask }] = await Promise.all([
     homeSnapshot().catch(() => []),
-    recentChats(user.id).catch(() => []),
     getWatchlist(user.id).catch(() => []),
     searchParams,
   ]);
@@ -28,5 +26,5 @@ export default async function Home({
   const watchlistExtra: WatchlistQuote[] = uncovered.length
     ? await watchlistQuotes(uncovered).catch(() => [])
     : [];
-  return <Chat home={home} recent={recent} initialAsk={ask} watchlist={watchlist} watchlistExtra={watchlistExtra} />;
+  return <Chat home={home} initialAsk={ask} watchlist={watchlist} watchlistExtra={watchlistExtra} />;
 }
