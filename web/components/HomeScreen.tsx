@@ -8,7 +8,6 @@ import { CATEGORIES, categorySlugOf } from "@/lib/categories";
 import { companyDisplayName } from "./widgets/CompanyOverview";
 import { WatchStar } from "./WatchStar";
 import { seedWatchlist, useWatchlist } from "./watchStore";
-import { BriefingStyle } from "./BriefingStyle";
 
 // Sort choice for the covered-companies grid, persisted across reloads.
 // localStorage is the source of truth; useSyncExternalStore avoids both the
@@ -210,10 +209,7 @@ export function HomeScreen({
 
       {watching.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold">Watching</h2>
-            <BriefingStyle />
-          </div>
+          <h2 className="text-sm font-semibold">Watching</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
             {watching.map(({ sym, covered, quote }) =>
               covered ? (

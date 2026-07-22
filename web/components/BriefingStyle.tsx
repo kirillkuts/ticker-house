@@ -6,7 +6,7 @@ import { RECIPES, recipeByKey } from "@/lib/recipes";
 
 // Recipe picker + custom-instructions editor for the daily briefing
 // (task 050). Templates are shown in full — readable prompts, not black
-// boxes. Lives beside the Watching section header on home.
+// boxes. Lives on the Briefing page, beside the title (task 065).
 export function BriefingStyle() {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
