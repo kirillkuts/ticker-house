@@ -311,6 +311,8 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
         asks={[
           { label: "Is it a good company?", prompt: `Compare ${tk} against the covered stocks on net margin, return on equity, revenue growth and debt to equity, then give your verdict: is it a good company?` },
           { label: "Rank peers by market cap", prompt: "Rank the covered stocks by market cap" },
+          { label: "How it makes money", prompt: `Show ${tk}'s revenue by segment and explain in plain language how ${tk} makes its money` },
+          { label: "How it spends money", prompt: `Show ${tk}'s expense breakdown and explain in plain language what ${tk} spends its money on` },
         ]}
       />
 
