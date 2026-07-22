@@ -1,80 +1,34 @@
-import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
-import path from "node:path";
 import { schedules, logger } from "@trigger.dev/sdk";
 import { detectEvents, lastBriefDate, PRICE_MOVE_THRESHOLD_PCT, type StockEvents } from "../lib/daily-events";
 import { runDailyBriefing } from "../lib/briefing";
 
-// Task 048: weekday-morning pipeline — refresh prices and filings, then
-// detect per-watched-stock events for the briefing agent (049). The syncs
-// run as the repo's npm scripts (owned by src/, cwd-relative paths and all),
-// so this task must run where the repo and its databases are reachable: the
-// `trigger.dev dev` machine in dev; a cloud deploy needs its own data access
-// (see the 021 plan notes).
-
-// The bundle runs from a build dir under web/.trigger; the repo root is
-// wherever data/universe.txt lives, walking upward from cwd.
-function repoRoot(): string {
-  if (process.env.REPO_ROOT) return process.env.REPO_ROOT;
-  let dir = process.cwd();
-  for (let i = 0; i < 8; i++) {
-    if (existsSync(path.join(dir, "data", "universe.txt"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(`repo root not found walking up from ${process.cwd()}; set REPO_ROOT`);
-}
-
-function runNpmScript(root: string, script: string, args: readonly string[] = []): Promise<{ code: number; tail: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("npm", ["run", script, ...args], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
-    const lines: string[] = [];
-    const keep = (chunk: Buffer) => {
-      lines.push(...chunk.toString().split("\n"));
-      if (lines.length > 60) lines.splice(0, lines.length - 60);
-    };
-    child.stdout.on("data", keep);
-    child.stderr.on("data", keep);
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, tail: lines.join("\n").trim() }));
-  });
-}
+// Task 048/049: weekday-morning briefing. Data ingestion runs OUTSIDE the
+// cloud — a local snapshot is pushed to prod ClickHouse (deploy/push-clickhouse.sh),
+// so this task never syncs; it only reads. It detects per-watched-stock events
+// since the last briefing, then writes layer-1 briefs and layer-2 per-user
+// briefings. Quiet days write rows without LLM calls. Cloud-safe: only touches
+// ClickHouse Cloud + managed Postgres — no repo, no filesystem, no subprocess.
+//
+// Note on a static snapshot: the watermark (max brief_date) advances each run,
+// so after the first briefing the following days go quiet until the snapshot is
+// refreshed. The in-app "Run briefing now" button re-anchors detection to the
+// data's own latest date, so use it for demos on frozen data.
 
 export const dailySync = schedules.task({
   id: "daily-sync",
-  // Weekday mornings ET, after the prior trading day is complete. Off the
-  // :00 mark on purpose.
+  // Weekday mornings ET, after the prior trading day is complete. Off :00 on purpose.
   cron: { pattern: "23 7 * * 1-5", timezone: "America/New_York" },
-  maxDuration: 1800, // filings sync alone can take several minutes
+  maxDuration: 900,
   run: async () => {
-    const root = repoRoot();
+    const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const since = (await lastBriefDate()) ?? yesterday;
 
-    // Explicit price range: the CLI default (yesterday only) syncs nothing
-    // when yesterday was a weekend day, so Monday runs would never pick up
-    // Friday's bar. Re-syncing already-present days is safe (ReplacingMergeTree).
-    const day = (offset: number) => new Date(Date.now() - offset * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const priceArgs = ["--", "--from", day(6), "--to", day(1)];
-
-    for (const [script, args] of [["sync:prices", priceArgs], ["sync:filings", []]] as const) {
-      logger.info(`running ${script}`, { root, args });
-      const { code, tail } = await runNpmScript(root, script, args);
-      logger.info(`${script} finished`, { code, tail });
-      // A sync failure isn't fatal for detection: stale data just means
-      // fewer/older events, and the briefer's watermark catches up tomorrow.
-      if (code !== 0) logger.error(`${script} exited ${code} — detecting on existing data`);
-    }
-
-    // Detection runs inside the briefer: watermark (max brief_date, else
-    // yesterday), events per watched stock, layer-1 briefs, layer-2 per-user
-    // briefings. Quiet days write rows without LLM calls.
-    // Per-stock event log (048) — the briefer re-detects internally with the
-    // same watermark; detection is two cheap ClickHouse queries.
-    const since = (await lastBriefDate()) ?? day(1);
+    // Per-stock event log for observability; the briefer re-detects internally
+    // with the same watermark (detection is two cheap ClickHouse queries).
     for (const e of await detectEvents(since)) logger.info(describeStock(e), { symbol: e.symbol });
 
     const today = new Date().toISOString().slice(0, 10);
-    const report = await runDailyBriefing(today, { log: (m) => logger.info(m) });
+    const report = await runDailyBriefing(today, { since, log: (m) => logger.info(m) });
     logger.info("daily briefing done", {
       since: report.since,
       thresholdPct: PRICE_MOVE_THRESHOLD_PCT,
