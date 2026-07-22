@@ -2,7 +2,9 @@
 // tags mid-history keeps its full series) instead of one concept per field.
 // v3: deeper expense lines (S&M / G&A split, D&A, intangibles amortization,
 // advertising). Companies reporting combined SG&A leave the split fields null.
-export const MAPPING_VERSION = "v3";
+// v4: net_income fallbacks (BSX tags almost everything as ProfitLoss and has
+// 8 NetIncomeLoss facts total, which starved period assembly to 4 periods).
+export const MAPPING_VERSION = "v4";
 
 export type FieldKind = "duration" | "instant";
 
@@ -30,7 +32,7 @@ export const FIELD_DEFS: FieldDef[] = [
   { field: "interest_expense", kind: "duration", unit: "USD", concepts: ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt"] },
   { field: "pretax_income", kind: "duration", unit: "USD", concepts: ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"] },
   { field: "income_tax", kind: "duration", unit: "USD", concepts: ["IncomeTaxExpenseBenefit"] },
-  { field: "net_income", kind: "duration", unit: "USD", concepts: ["NetIncomeLoss"] },
+  { field: "net_income", kind: "duration", unit: "USD", concepts: ["NetIncomeLoss", "NetIncomeLossAvailableToCommonStockholdersBasic", "ProfitLoss"] },
   { field: "basic_eps", kind: "duration", unit: "USD/shares", concepts: ["EarningsPerShareBasic"] },
   { field: "diluted_eps", kind: "duration", unit: "USD/shares", concepts: ["EarningsPerShareDiluted"] },
   { field: "basic_weighted_shares", kind: "duration", unit: "shares", concepts: ["WeightedAverageNumberOfSharesOutstandingBasic"] },

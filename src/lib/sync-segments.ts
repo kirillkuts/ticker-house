@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { chClient, type CH } from "./clickhouse.js";
+import { loadCikOverrides, applyCikOverrides } from "./cik-overrides.js";
 
 // SEC Financial Statement Data Sets: quarterly ZIPs with every numeric fact
 // from every filing, including dimensional (segment) facts that the
@@ -155,14 +156,18 @@ export async function syncSegments(quartersBack = 12, log: (msg: string) => void
 
     const universe = (await readFile("data/universe.txt", "utf8"))
       .split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-    const secRows = await (
-      await ch.query({
-        query: `SELECT security_id, cik, ticker FROM securities FINAL
-                WHERE is_active AND ticker IN ({tickers:Array(String)})`,
-        query_params: { tickers: universe },
-        format: "JSONEachRow",
-      })
-    ).json<{ security_id: number; cik: number; ticker: string }>();
+    const secRows = applyCikOverrides(
+      await (
+        await ch.query({
+          query: `SELECT security_id, cik, ticker FROM securities FINAL
+                  WHERE is_active AND ticker IN ({tickers:Array(String)})`,
+          query_params: { tickers: universe },
+          format: "JSONEachRow",
+        })
+      ).json<{ security_id: number; cik: number; ticker: string }>(),
+      await loadCikOverrides(),
+      log,
+    );
     const byCik = new Map(secRows.map((s) => [s.cik, s]));
 
     const quarters = recentQuarters(quartersBack);

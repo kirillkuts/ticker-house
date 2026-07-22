@@ -3,6 +3,7 @@ import { saveRaw } from "./sec.js";
 import { fetchCompanyFacts, extractMappedFacts, type RawFact } from "./facts.js";
 import { assemblePeriods, type FinancialPeriod } from "./normalize-financials.js";
 import { chClient, type CH } from "./clickhouse.js";
+import { loadCikOverrides, applyCikOverrides } from "./cik-overrides.js";
 import { FIELD_DEFS } from "./concepts.js";
 
 export interface FinancialsReport {
@@ -126,26 +127,33 @@ export async function syncFinancials(log: (msg: string) => void = console.log): 
     const universe = (await readFile("data/universe.txt", "utf8"))
       .split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
 
-    const secRows = await (
-      await ch.query({
-        query: `SELECT security_id, cik, ticker FROM securities FINAL
-                WHERE is_active AND ticker IN ({tickers:Array(String)})`,
-        query_params: { tickers: universe },
-        format: "JSONEachRow",
-      })
-    ).json<{ security_id: number; cik: number; ticker: string }>();
+    const secRows = applyCikOverrides(
+      await (
+        await ch.query({
+          query: `SELECT security_id, cik, ticker FROM securities FINAL
+                  WHERE is_active AND ticker IN ({tickers:Array(String)})`,
+          query_params: { tickers: universe },
+          format: "JSONEachRow",
+        })
+      ).json<{ security_id: number; cik: number; ticker: string }>(),
+      await loadCikOverrides(),
+      log,
+    );
 
     let factsInserted = 0;
     let periodsInserted = 0;
+    // New registrants (spinoffs, IPOs) can have zero us-gaap facts until their
+    // first 10-Q/10-K. They're warned above, so the annual-period gate skips them.
+    const noFacts = new Set<number>();
 
     for (const sec of secRows) {
       log(`fetching companyfacts for ${sec.ticker} (CIK ${sec.cik})`);
       const gaap = await fetchCompanyFacts(sec.cik);
-      if (!gaap) { warnings.push(`${sec.ticker}: no companyfacts (CIK ${sec.cik})`); continue; }
+      if (!gaap) { warnings.push(`${sec.ticker}: no companyfacts (CIK ${sec.cik})`); noFacts.add(sec.security_id); continue; }
       await saveRaw(runDate, `facts_${sec.ticker}.json`, gaap);
 
       const facts: RawFact[] = extractMappedFacts(gaap);
-      if (facts.length === 0) { warnings.push(`${sec.ticker}: no mapped us-gaap facts (IFRS filer?)`); continue; }
+      if (facts.length === 0) { warnings.push(`${sec.ticker}: no mapped us-gaap facts (IFRS filer?)`); noFacts.add(sec.security_id); continue; }
 
       const periods = assemblePeriods(sec.security_id, facts, version);
 
@@ -161,7 +169,7 @@ export async function syncFinancials(log: (msg: string) => void = console.log): 
       await new Promise((r) => setTimeout(r, 120)); // stay under SEC 10 req/s
     }
 
-    const failures = await qualityChecks(ch, secRows.map((s) => s.security_id), warnings);
+    const failures = await qualityChecks(ch, secRows.filter((s) => !noFacts.has(s.security_id)).map((s) => s.security_id), warnings);
     const report: FinancialsReport = { tickers: secRows.length, factsInserted, periodsInserted, warnings, failures };
     log(JSON.stringify({ ...report, warnings: warnings.length, failures }, null, 2));
     if (failures.length > 0) throw new Error(`quality checks failed: ${failures.join("; ")}`);

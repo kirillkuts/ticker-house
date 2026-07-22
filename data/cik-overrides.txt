@@ -1,0 +1,6 @@
+# Filing-history CIK per ticker, when it differs from the SEC ticker file's entity.
+# Format: TICKER CIK
+# XOM: 2026 holdco reorg. Ticker file maps XOM to ExxonMobil Holdings Corp
+# (CIK 2115436), which has no us-gaap facts; filings live under the operating
+# company Exxon Mobil Corporation.
+XOM 34088
