@@ -110,6 +110,11 @@ async function runSchemaBootstrap(): Promise<void> {
         created_at  timestamptz NOT NULL DEFAULT now(),
         UNIQUE (symbol, brief_date)
       );
+      -- Structured brief (metric-tile layout): a one-line takeaway and up to a
+      -- few {label,value,delta,direction} tiles the /briefing page renders as
+      -- KPI cards. body stays the supporting narrative.
+      ALTER TABLE stock_briefs ADD COLUMN IF NOT EXISTS takeaway text NOT NULL DEFAULT '';
+      ALTER TABLE stock_briefs ADD COLUMN IF NOT EXISTS metrics jsonb NOT NULL DEFAULT '[]'::jsonb;
       -- Briefing personalization (task 050): a recipe key from lib/recipes.ts
       -- and free-form instructions, applied only in briefing layer 2.
       ALTER TABLE users ADD COLUMN IF NOT EXISTS recipe_key text;

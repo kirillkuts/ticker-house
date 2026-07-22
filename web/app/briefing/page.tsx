@@ -2,10 +2,32 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { Header } from "@/components/Header";
+import { RunBriefingButton } from "@/components/RunBriefingButton";
+import { BriefingStyle } from "@/components/BriefingStyle";
 import { currentUser } from "@/lib/auth";
 import { briefingDates, briefingForDate } from "@/lib/briefing";
 
 export const dynamic = "force-dynamic";
+
+// Inline SVG sparkline of recent closes, coloured by net direction.
+function Spark({ values }: { values: number[] }) {
+  if (!values || values.length < 2) return null;
+  const w = 116, h = 26, pad = 3;
+  const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+  const pts = values
+    .map((v, i) => {
+      const x = pad + (i * (w - 2 * pad)) / (values.length - 1);
+      const y = h - pad - ((v - min) / span) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const color = values[values.length - 1] >= values[0] ? "var(--viz-up-text)" : "var(--viz-down-text)";
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden className="shrink-0">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 // Task 051: the daily briefing, per-stock sections with filing links and
 // jumps into the existing widgets, and a date switcher for history (same
@@ -32,8 +54,12 @@ export default async function BriefingPage({
         </Link>
       </Header>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-lg font-semibold">Daily briefing</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">Daily briefing</h1>
+          <RunBriefingButton />
+          <BriefingStyle />
+        </div>
         {dates.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {dates.map((d) => (
@@ -74,17 +100,20 @@ export default async function BriefingPage({
                   key={s.symbol}
                   className="space-y-2 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4"
                 >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-semibold">
-                      {s.symbol}
-                      {s.priceMove && (
-                        <span
-                          className="ml-2 text-xs font-medium"
-                          style={{ color: s.priceMove.movePct >= 0 ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
-                        >
-                          {s.priceMove.movePct >= 0 ? "▲ +" : "▼ "}{s.priceMove.movePct.toFixed(1)}% on {s.priceMove.date}
-                        </span>
-                      )}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-3">
+                      <span className="font-semibold">
+                        {s.symbol}
+                        {s.priceMove && (
+                          <span
+                            className="ml-2 text-xs font-medium"
+                            style={{ color: s.priceMove.movePct >= 0 ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
+                          >
+                            {s.priceMove.movePct >= 0 ? "▲ +" : "▼ "}{s.priceMove.movePct.toFixed(1)}% on {s.priceMove.date}
+                          </span>
+                        )}
+                      </span>
+                      <Spark values={s.spark} />
                     </span>
                     <span className="flex gap-1.5 text-xs">
                       <a
@@ -101,6 +130,33 @@ export default async function BriefingPage({
                       </a>
                     </span>
                   </div>
+                  {s.takeaway && (
+                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{s.takeaway}</p>
+                  )}
+                  {s.metrics.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {s.metrics.map((m, i) => {
+                        const color =
+                          m.direction === "up" ? "var(--viz-up-text)"
+                          : m.direction === "down" ? "var(--viz-down-text)"
+                          : undefined;
+                        return (
+                          <div
+                            key={`${m.label}-${i}`}
+                            className="min-w-[7rem] flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900"
+                          >
+                            <div className="text-[11px] uppercase tracking-wide text-neutral-400">{m.label}</div>
+                            <div className="text-base font-semibold tabular-nums">{m.value}</div>
+                            {m.delta && (
+                              <div className="text-xs font-medium tabular-nums" style={{ color }}>
+                                {m.direction === "up" ? "▲ " : m.direction === "down" ? "▼ " : ""}{m.delta}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="prose-chat space-y-2 text-sm text-neutral-600 dark:text-neutral-300">
                     <ReactMarkdown>{s.body}</ReactMarkdown>
                   </div>

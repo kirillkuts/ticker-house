@@ -28,6 +28,7 @@ export interface StockEvents {
   securityId: number | null; // null: watched symbol with no active security
   filings: FilingEvent[];
   priceMove: PriceMoveEvent | null;
+  spark: number[]; // recent closes, oldest -> newest, for the sparkline
   quiet: boolean;
 }
 
@@ -52,6 +53,23 @@ export async function lastBriefDate(): Promise<string | null> {
     return res.rows[0]?.d ?? null;
   } catch {
     return null; // table doesn't exist yet (pre-049)
+  }
+}
+
+// Newest day present in the data (filings or prices). The force-run anchors
+// its detection window here, not to the wall clock: the synced data can be
+// days or weeks behind "today", and a demo still needs events to surface.
+export async function latestDataDate(): Promise<string | null> {
+  try {
+    const rows = await queryRows<{ d: string }>(
+      `SELECT toString(max(m)) AS d FROM (
+         SELECT max(filed_date) AS m FROM filings
+         UNION ALL SELECT max(trade_date) FROM daily_prices FINAL
+       ) WHERE m > '1970-01-01'`,
+    );
+    return rows[0]?.d || null;
+  } catch {
+    return null;
   }
 }
 
@@ -94,7 +112,7 @@ export async function detectEvents(
          WHERE p.security_id IN ({ids:Array(UInt32)})
            AND replaceAll(p.source_symbol, '.', '-') = upper(s.ticker)
        )
-       WHERE rn <= 2
+       WHERE rn <= 40
        ORDER BY security_id, date`,
       { ids },
     ),
@@ -123,13 +141,16 @@ export async function detectEvents(
     // comparison is >= because a brief written on morning D covers through
     // D-1's close: day D's own close belongs to the NEXT brief, so with the
     // watermark at D the bar dated D must still count.
-    if (closes.length === 2 && closes[1].date >= since) {
-      const [prev, last] = closes;
-      const movePct = (last.close / prev.close - 1) * 100;
-      if (Math.abs(movePct) >= thresholdPct) {
-        priceMove = { date: last.date, prevClose: prev.close, close: last.close, movePct };
+    if (closes.length >= 2) {
+      const prev = closes[closes.length - 2], last = closes[closes.length - 1];
+      if (last.date >= since) {
+        const movePct = (last.close / prev.close - 1) * 100;
+        if (Math.abs(movePct) >= thresholdPct) {
+          priceMove = { date: last.date, prevClose: prev.close, close: last.close, movePct };
+        }
       }
     }
-    return { symbol, securityId, filings, priceMove, quiet: filings.length === 0 && priceMove === null };
+    const spark = closes.map((c) => c.close);
+    return { symbol, securityId, filings, priceMove, spark, quiet: filings.length === 0 && priceMove === null };
   });
 }
