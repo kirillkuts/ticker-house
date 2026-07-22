@@ -12,6 +12,8 @@ import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashb
 import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
 import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "@/lib/watchlist";
 import { recipeByKey } from "@/lib/recipes";
+import { runDailyBriefing } from "@/lib/briefing";
+import { latestDataDate } from "@/lib/daily-events";
 import { db, ensureSchema } from "@/lib/db";
 
 const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
@@ -115,6 +117,21 @@ export async function getBriefingSettingsAction(): Promise<BriefingSettings> {
     recipeKey: res.rows[0]?.recipe_key ?? null,
     customInstructions: res.rows[0]?.custom_instructions ?? "",
   };
+}
+
+// Force-run today's briefing on demand (the "Run now" button) — for demos and
+// after editing the watchlist, without waiting for the morning cron. force
+// regenerates even if today's briefing exists, so a fresh watchlist shows up,
+// and it emails if Gmail creds are set. Detection anchors to the newest day in
+// the data (which may lag "today"), so events still surface.
+export async function runBriefingNowAction(): Promise<{ date: string; briefed: number; errors: string[] }> {
+  const user = await requireUser();
+  const today = new Date().toISOString().slice(0, 10);
+  const dataDate = await latestDataDate();
+  const anchor = dataDate && dataDate < today ? dataDate : today;
+  const since = new Date(Date.parse(anchor) - 7 * 86400_000).toISOString().slice(0, 10);
+  const report = await runDailyBriefing(today, { since, force: true, onlyUserId: user.id });
+  return { date: report.date, briefed: report.briefings.length, errors: report.errors };
 }
 
 export async function saveBriefingSettingsAction(recipeKey: string | null, customInstructions: string) {
