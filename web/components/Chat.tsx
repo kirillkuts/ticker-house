@@ -7,7 +7,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { tickerChat, ChatUIMessage } from "@/trigger/chat";
 import type { HomeTicker, WatchlistQuote } from "@/lib/views";
 import type { RecentChat } from "@/lib/chats";
-import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction, listDashboardsAction, createDashboardAction } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, saveChatAction, fetchCompanyOverview, fetchCategorySnapshot, saveDashboardWidgetAction, explainElementAction, summarizeInterestAction, listDashboardsAction, createDashboardAction } from "@/app/actions";
 import { ViewBody } from "./ViewBody";
 import { AskContext, FollowUps } from "./widgets/FollowUps";
 import { FactMarkersContext, type FactMarker } from "./widgets/FactMarkers";
@@ -298,6 +298,38 @@ export function Chat({
       ]);
     } catch {
       sendMessage({ text }, { metadata: { speed: "fast" } }); // no direct data — a pre-prompted ask, so the fast model handles it
+    }
+  };
+
+  // A category tile is the same known-question/known-answer path (task 057):
+  // inject the dashboard into this fresh homepage chat and let the URL move to
+  // /chat/<id>, so each click starts a new chat instead of resuming the
+  // canonical /category/<slug> one (deliberately overriding task 036).
+  const instantCategory = async (slug: string, name: string) => {
+    const text = `Show me the ${name} category`;
+    try {
+      const out = await fetchCategorySnapshot(slug);
+      if (!out) throw new Error("no data");
+      const stamp = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        { id: `local-u-${stamp}`, role: "user" as const, parts: [{ type: "text" as const, text }] },
+        {
+          id: `local-a-${stamp}`,
+          role: "assistant" as const,
+          parts: [
+            {
+              type: "tool-show_category" as const,
+              toolCallId: `local-call-${stamp}`,
+              state: "output-available" as const,
+              input: { category: slug },
+              output: out,
+            },
+          ],
+        },
+      ]);
+    } catch {
+      sendMessage({ text }, { metadata: { speed: "fast" } });
     }
   };
 
@@ -795,6 +827,7 @@ export function Chat({
           watchlistExtra={watchlistExtra}
           onAsk={(text) => sendMessage({ text }, { metadata: { speed: "fast" } })}
           onTickerTile={instantOverview}
+          onCategoryTile={instantCategory}
           composer={composer}
         />
       </div>

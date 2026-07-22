@@ -7,7 +7,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { saveChat, recentChats, claimChat } from "@/lib/chats";
-import { companyOverview } from "@/lib/views";
+import { companyOverview, categorySnapshot } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
 import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "@/lib/watchlist";
@@ -75,6 +75,12 @@ export async function fetchCompanyOverview(ticker: string) {
     .then((user) => user && recordInterest(user.id, ticker, "overview_view", { source: "tile" }))
     .catch(() => {});
   return companyOverview(ticker);
+}
+
+// Category tiles take the same instant path as company tiles (task 057): fetch
+// the dashboard here so the client can seed a fresh chat without an agent turn.
+export async function fetchCategorySnapshot(slug: string) {
+  return categorySnapshot(slug);
 }
 
 // --- watchlist (task 045) -----------------------------------------------------

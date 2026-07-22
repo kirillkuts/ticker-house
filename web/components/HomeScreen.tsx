@@ -146,6 +146,7 @@ export function HomeScreen({
   watchlistExtra = [],
   onAsk,
   onTickerTile,
+  onCategoryTile,
   composer,
 }: {
   home: HomeTicker[];
@@ -155,6 +156,9 @@ export function HomeScreen({
   onAsk: (text: string) => void;
   // Instant path for company tiles; falls back to asking the agent.
   onTickerTile?: (ticker: string) => void;
+  // Instant path for category tiles (task 057: fresh chat per click); without
+  // it the tile stays a plain link to the canonical /category/<slug> page.
+  onCategoryTile?: (slug: string, name: string) => void;
   composer: React.ReactNode;
 }) {
   const openTile = onTickerTile ?? ((tk: string) => onAsk(`Give me the full overview of ${tk}`));
@@ -254,15 +258,10 @@ export function HomeScreen({
               const changes = members.map((t) => t.changePct).filter((v): v is number => v !== null);
               const avg = changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null;
               const up = avg !== null && avg >= 0;
-              return (
-                <a
-                  key={c.slug}
-                  href={`/category/${c.slug}`}
-                  title={`${c.name}: ${c.blurb}`}
-                  className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 transition-colors hover:border-blue-400 dark:hover:border-blue-500"
-                >
-                  {/* Long names ("Aerospace & Defense") ellipsize instead of
-                      pushing the change badge out of the card (task 054). */}
+              // Long names ("Aerospace & Defense") ellipsize instead of
+              // pushing the change badge out of the card (task 054).
+              const inner = (
+                <>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-sm font-semibold">{c.name}</span>
                     {avg !== null && (
@@ -275,6 +274,25 @@ export function HomeScreen({
                     )}
                   </div>
                   <div className="text-xs text-neutral-500">{members.length} companies</div>
+                </>
+              );
+              const cardClass =
+                "overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500";
+              // Task 057: each click starts a fresh chat via onCategoryTile.
+              // Without it, keep the plain link to the canonical category page.
+              return onCategoryTile ? (
+                <button
+                  key={c.slug}
+                  type="button"
+                  onClick={() => onCategoryTile(c.slug, c.name)}
+                  title={`${c.name}: ${c.blurb}`}
+                  className={cardClass}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <a key={c.slug} href={`/category/${c.slug}`} title={`${c.name}: ${c.blurb}`} className={cardClass}>
+                  {inner}
                 </a>
               );
             })}
