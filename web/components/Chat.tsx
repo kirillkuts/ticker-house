@@ -154,17 +154,6 @@ function canvasTitle(parts: Part[]): string {
   return who ? `Canvas · ${who}` : "Canvas";
 }
 
-// Full-dashboard views: even a single one auto-opens on the canvas instead of
-// swallowing the chat column. Metric tables and chips stay inline.
-const BIG_VIEW_TYPES = new Set([
-  "tool-show_company_overview",
-  "tool-show_price_chart",
-  "tool-show_fundamentals",
-  "tool-show_expense_breakdown",
-  "tool-show_segments",
-  "tool-show_category",
-]);
-
 // A view on the canvas, identified by its position in the message list so we
 // always render from the live message parts.
 interface ViewRef {
@@ -562,14 +551,13 @@ export function Chat({
     window.addEventListener("pointerup", onUp);
   };
 
-  // Group view parts into canvases, one per assistant message. The FIRST
-  // canvas is born from an answer that reads as a dashboard — 2+ view calls
-  // or a single BIG widget. From then on the chat is in canvas mode: every
-  // later answer with any view gets its own canvas, no matter how small.
-  // A message whose canvas the model edited itself is exempt (its edit wins),
-  // and user-pinned views always materialize a canvas. Counting CALLS (not
-  // finished outputs) moves views over as soon as the call starts; pending
-  // views stay as placeholders, errors drop out.
+  // Group view parts into canvases, one per assistant message (task 061):
+  // every answer that produces a widget gets exactly one canvas, no widget
+  // ever renders inline, and a text-only answer (no view parts, returned
+  // above) creates none. A message whose canvas the model edited itself is
+  // exempt (its edit wins), and user-pinned views always materialize a canvas.
+  // Counting CALLS (not finished outputs) moves views over as soon as the call
+  // starts; pending views stay as placeholders, errors drop out.
   const canvases: CanvasGroup[] = [];
   // Re-asking the same question must not yield two identically-named tabs.
   const labelCounts = new Map<string, number>();
@@ -593,10 +581,7 @@ export function Chat({
         Boolean((p.output as { add_new_views?: boolean } | undefined)?.add_new_views),
     );
     const modelEdited = edits.length > 0 && editsDone && !editAdds;
-    const canvasMode = canvases.length > 0;
-    const qualifies =
-      !modelEdited &&
-      (canvasMode || views.length >= 2 || views.some((x) => BIG_VIEW_TYPES.has(x.part.type)));
+    const qualifies = !modelEdited;
     const entries = views.filter(
       (x) => (qualifies || pinnedKeys.has(refKey(x.ref))) && !removedKeys.has(refKey(x.ref)) && !isErrorPart(x.part),
     );
@@ -623,16 +608,6 @@ export function Chat({
   const canvasParts = activeCanvas?.entries ?? [];
   const canvasKeys = new Set(canvases.flatMap((c) => c.entries.map((x) => refKey(x.ref))));
 
-  const pinToCanvas = (r: ViewRef) => {
-    setPinnedKeys((prev) => new Set(prev).add(refKey(r)));
-    setRemovedKeys((prev) => {
-      const next = new Set(prev);
-      next.delete(refKey(r));
-      return next;
-    });
-    setActiveCanvasId(r.msgId);
-    setCanvasOpen(true);
-  };
   const removeFromCanvas = (r: ViewRef) => {
     const part = messages.find((m) => m.id === r.msgId)?.parts[r.partIdx];
     signals.current.push({ kind: "remove", text: part ? describePart(part).slice(0, 160) : refKey(r) });
@@ -894,11 +869,14 @@ export function Chat({
                 }
                 if (part.type === "tool-suggest_follow_ups" && m.id !== lastAssistantId) return null;
                 const ref = { msgId: m.id, partIdx: i };
-                const onCanvas = canvasKeys.has(refKey(ref));
-                // A view lives in exactly one place: on the canvas it is
-                // represented in chat only by a chip; inline otherwise.
-                if (onCanvas && isViewToolPart(part) && !isErrorPart(part)) {
+                // Task 061: a widget (view tool) never draws in the chat
+                // thread. Streaming or done, it shows only a chip pointing at
+                // the canvas where the widget actually lives. A view removed
+                // from the canvas leaves no inline copy behind.
+                if (isViewToolPart(part) && !isErrorPart(part)) {
                   const pending = !("state" in part) || part.state !== "output-available";
+                  const onCanvas = canvasKeys.has(refKey(ref));
+                  if (!pending && !onCanvas) return null;
                   return (
                     <div key={i} className={`chip-in my-2 inline-flex items-center gap-2 rounded-xl border border-blue-500 bg-blue-50 dark:bg-blue-950 px-3 py-2 text-sm ${pending ? "animate-pulse" : ""}`}>
                       <button type="button" onClick={() => showCanvasFor(ref)} className="flex items-center gap-2">
@@ -910,35 +888,18 @@ export function Chat({
                         type="button"
                         onClick={() => removeFromCanvas(ref)}
                         className="text-neutral-400 hover:text-red-500"
-                        aria-label="Return to chat"
-                        title="Return to chat"
+                        aria-label="Remove from canvas"
+                        title="Remove from canvas"
                       >
                         ✕
                       </button>
                     </div>
                   );
                 }
+                // Non-widget tool parts — errors, model canvas-edit notices,
+                // follow-up chips — are not widgets, so they stay in the thread.
                 return (
-                  <div key={i} className="relative group">
-                    {isViewPart(part) && (
-                      <div className="absolute right-3 top-0 z-10 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          type="button"
-                          onClick={(e) => openSaveMenu(ref, part, e)}
-                          title="Save to the live dashboard"
-                          className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
-                        >
-                          {savedWidgets.has(refKey(ref)) ? "✓ saved" : "☆ save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => pinToCanvas(ref)}
-                          className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs text-neutral-500 hover:border-blue-400 hover:text-blue-600"
-                        >
-                          ▦ canvas
-                        </button>
-                      </div>
-                    )}
+                  <div key={i}>
                     <FactMarkersContext.Provider value={factMarkersOf(m)}>
                       <ToolPart part={part} />
                     </FactMarkersContext.Provider>
