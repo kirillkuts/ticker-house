@@ -1021,7 +1021,10 @@ export function Chat({
               {canvasParts.map(({ ref, part }) => (
                 <div
                   key={refKey(ref)}
-                  className={`chip-in relative group ${metaHeld ? "cursor-help rounded-xl ring-2 ring-blue-300 dark:ring-blue-700" : ""}`}
+                  // pt-6 reserves a strip above each card so the hover
+                  // save/remove overlay (and its tooltip) sit above the widget
+                  // instead of over its header content (task 060).
+                  className={`chip-in relative group pt-6 ${metaHeld ? "cursor-help rounded-xl ring-2 ring-blue-300 dark:ring-blue-700" : ""}`}
                   title={metaHeld ? "Cmd+click: explain this" : undefined}
                   onMouseOverCapture={(e) => {
                     if (!metaHeld) return;
@@ -1105,7 +1108,7 @@ export function Chat({
                       </span>
                     </div>
                   )}
-                  <div className="absolute right-3 top-0 z-10 flex -translate-y-1/2 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="absolute right-3 top-1 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
                       onClick={(e) => openSaveMenu(ref, part, e)}
