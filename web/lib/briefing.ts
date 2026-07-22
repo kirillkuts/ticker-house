@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { db, ensureSchema } from "./db";
 import { queryRows } from "./clickhouse";
+import { verifyDataConnections } from "./preflight";
 import { interestRanking } from "./watchlist";
 import { detectEvents, lastBriefDate, type StockEvents } from "./daily-events";
 import { recipeByKey } from "./recipes";
@@ -69,6 +70,9 @@ export async function runDailyBriefing(
 ): Promise<BriefingReport> {
   const log = opts.log ?? console.log;
   const force = opts.force ?? false;
+  // Preflight: fail fast with a clear message if ClickHouse or Postgres is
+  // unreachable, before spending any LLM calls on a run that can't finish.
+  await verifyDataConnections(log);
   await ensureSchema();
   const yesterday = new Date(new Date(date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
   const since = opts.since ?? (await lastBriefDate()) ?? yesterday;
