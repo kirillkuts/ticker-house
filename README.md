@@ -11,7 +11,7 @@ Full pitch: [docs/pitch.md](docs/pitch.md).
 ## Layout
 
 ```text
-docs/            pitch, epics, task findings, data-source research
+docs/            pitch, data-source and ClickHouse notes, references
 src/             data ingestion (TypeScript, run via npm scripts)
   lib/           fetchers, normalizers, ClickHouse loaders
   cli/           entry points for the sync commands
@@ -19,7 +19,6 @@ web/             the app: Next.js + Trigger.dev chat agent + widgets
   trigger/       ticker-chat agent (router prompt + view tools)
   lib/views.ts   data contracts: one fixed SQL query per view
   components/    chat UI and dashboard widgets (recharts)
-librechat/       throwaway chat prototype config (LibreChat + MCP)
 data/            universe.txt (enriched tickers); raw snapshots gitignored
 ```
 
@@ -61,9 +60,3 @@ fundamentals.
 
 Adding a view = query in `web/lib/views.ts` + tool in `web/trigger/chat.ts`
 + widget in `web/components/widgets/` + a branch in `ToolPart`.
-
-## Prototype (optional)
-
-`docs/chat-prototype.md` documents the LibreChat + ClickHouse MCP sandbox
-(`make mcp && make chat-up`), used to explore question shapes before the
-views were designed. Not part of the product.
