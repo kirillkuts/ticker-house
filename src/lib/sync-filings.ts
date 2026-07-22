@@ -61,8 +61,17 @@ ORDER BY (security_id, accession)`,
 }
 
 // Good enough for filings: the agent needs readable prose, not fidelity.
+// 10-K/10-Q primary documents are inline XBRL (iXBRL): the readable body is
+// preceded by an <ix:header> block of machine-readable contexts, units and
+// hidden facts. Left in, it fills tens of thousands of chars of "xbrli:shares
+// iso4217:USD ...Member" noise before any prose, and the briefer's first-12k
+// window never reaches the text. Drop the non-visible iXBRL blocks first; the
+// visible values wrapped in <ix:nonFraction>/<ix:nonNumeric> survive as normal
+// tags with their inner text kept.
 export function htmlToText(html: string): string {
   return html
+    .replace(/<ix:header[\s\S]*?<\/ix:header>/gi, " ")
+    .replace(/<ix:hidden[\s\S]*?<\/ix:hidden>/gi, " ")
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
