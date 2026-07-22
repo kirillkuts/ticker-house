@@ -1,0 +1,37 @@
+name: Deploy Trigger.dev
+
+# Deploys the Trigger tasks (chat agent, daily briefing, run-now, healthcheck)
+# whenever the task code or its deps change on master — the Trigger equivalent
+# of the Vercel auto-deploy. Runtime env for the tasks lives in the Trigger
+# dashboard; this only ships the built task bundle.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "web/trigger/**"
+      - "web/lib/**"
+      - "web/trigger.config.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - ".github/workflows/deploy-trigger.yml"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx trigger.dev@4.5.4 deploy
+        env:
+          # Personal Access Token from the Trigger dashboard (Account → Personal
+          # Access Tokens), stored as a repo Actions secret. NOT the tr_prod_ key.
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+          TRIGGER_PROJECT_REF: proj_ommldbjgeksxrwlqrnkn
