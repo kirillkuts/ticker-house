@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import ReactMarkdown from "react-markdown";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
@@ -72,6 +72,39 @@ function ToolPart({ part }: { part: Part }) {
   }
   return null;
 }
+
+// Shared stable empty fact list so widgets without markers keep one reference.
+const EMPTY_FACTS: FactMarker[] = [];
+
+// react-markdown re-parses its whole input on every render, and the message
+// list re-renders on every streamed token. Memoizing means a finished
+// message's text is skipped token-to-token; only the message still being
+// typed re-parses (task 062).
+const MemoMarkdown = memo(function MemoMarkdown({ text }: { text: string }) {
+  return <ReactMarkdown>{text}</ReactMarkdown>;
+});
+
+// A tool part (canvas widget or an inline follow-up/error) with its fact
+// markers. Canvas widgets wrap expensive charts (recharts) whose data is fixed
+// once the tool call completes, yet the tree re-renders on every streamed token
+// of a later answer — that per-token chart re-render is what froze the page
+// (task 062). Skip re-rendering a completed part; a pending→complete transition
+// or a changed fact list (passed in pre-computed and stable) still repaints.
+const MemoToolPart = memo(
+  function MemoToolPart({ part, facts }: { part: Part; facts: FactMarker[] }) {
+    return (
+      <FactMarkersContext.Provider value={facts}>
+        <ToolPart part={part} />
+      </FactMarkersContext.Provider>
+    );
+  },
+  (prev, next) => {
+    if (prev.facts !== next.facts) return false;
+    const done = (p: Part) => "state" in p && p.state === "output-available";
+    // Same slot (stable React key) + both complete → identical output.
+    return done(prev.part) && done(next.part);
+  },
+);
 
 const TOOL_LABELS: Record<string, string> = {
   "tool-show_company_overview": "Company overview",
@@ -692,17 +725,44 @@ export function Chat({
   // answer's suggestions are current; older ones are noise.
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
 
+  // Stable fact-marker array per assistant message, reused across renders when
+  // its content is unchanged, so memoized canvas widgets aren't repainted every
+  // token just because factMarkersOf() built a fresh array (task 062).
+  const factsCache = useRef(new Map<string, { sig: string; facts: FactMarker[] }>());
+  const factMarkersById = useMemo(() => {
+    const out = new Map<string, FactMarker[]>();
+    for (const m of messages) {
+      if (m.role !== "assistant") continue;
+      const facts = factMarkersOf(m);
+      const sig = JSON.stringify(facts);
+      const cached = factsCache.current.get(m.id);
+      if (cached && cached.sig === sig) {
+        out.set(m.id, cached.facts);
+      } else {
+        factsCache.current.set(m.id, { sig, facts });
+        out.set(m.id, facts);
+      }
+    }
+    return out;
+  }, [messages]);
+
   // Every outgoing question — typed or clicked — carries the [canvas] block so
   // the model always knows what is pinned. Pre-prompted questions (fast: true)
   // ride with speed metadata so the agent picks a smaller model for them.
-  const ask = (text: string, opts?: { fast?: boolean }) => {
+  // canvasParts is rebuilt every render; ask reads it at call time via a ref so
+  // it can stay referentially stable (keeps AskContext from re-rendering every
+  // widget's follow-up chips on each streamed token — task 062).
+  const canvasPartsRef = useRef(canvasParts);
+  canvasPartsRef.current = canvasParts;
+  const ask = useCallback((text: string, opts?: { fast?: boolean }) => {
     signals.current.push({ kind: opts?.fast ? "chip" : "typed", text: text.slice(0, 160) });
-    const canvasBlock = canvasParts.length
+    const parts = canvasPartsRef.current;
+    const canvasBlock = parts.length
       ? "\n\n[canvas]\n" +
-        canvasParts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
+        parts.map(({ ref, part }) => `${refKey(ref)} — ${describePart(part)}`).join("\n")
       : "";
     sendMessage({ text: text + canvasBlock }, opts?.fast ? { metadata: { speed: "fast" } } : undefined);
-  };
+  }, [sendMessage]);
 
   // Session digest (task 039): the model ranks the produced views against the
   // interest signals; the picked views are COPIED into a new local message —
@@ -755,6 +815,12 @@ export function Chat({
     }
     setSummarizing(false);
   };
+
+  // Kept above the isEmpty early return so hook order is stable, and memoized
+  // so AskContext consumers (widget follow-up chips) don't re-render on every
+  // streamed token — only when busy actually flips (task 062).
+  const busy = status === "submitted" || status === "streaming";
+  const askContextValue = useMemo(() => ({ ask, busy }), [ask, busy]);
 
   const composer = (
     <form
@@ -810,7 +876,7 @@ export function Chat({
   }
 
   return (
-    <AskContext.Provider value={{ ask, busy: status === "submitted" || status === "streaming" }}>
+    <AskContext.Provider value={askContextValue}>
     <div className="flex min-h-screen">
       <div className={`mx-auto p-4 flex flex-col gap-4 min-h-screen w-full ${showCanvas ? "min-w-0 flex-1 max-w-none" : "max-w-3xl"}`}>
         <Header>
@@ -863,7 +929,7 @@ export function Chat({
                   const text = m.role === "user" ? part.text.replace(CANVAS_BLOCK_RE, "") : part.text;
                   return (
                     <div key={i} className="prose-chat text-sm leading-relaxed space-y-2">
-                      <ReactMarkdown>{text}</ReactMarkdown>
+                      <MemoMarkdown text={text} />
                     </div>
                   );
                 }
@@ -900,9 +966,7 @@ export function Chat({
                 // follow-up chips — are not widgets, so they stay in the thread.
                 return (
                   <div key={i}>
-                    <FactMarkersContext.Provider value={factMarkersOf(m)}>
-                      <ToolPart part={part} />
-                    </FactMarkersContext.Provider>
+                    <MemoToolPart part={part} facts={factMarkersById.get(m.id) ?? EMPTY_FACTS} />
                   </div>
                 );
               })}
@@ -1086,11 +1150,7 @@ export function Chat({
                       remove
                     </button>
                   </div>
-                  <FactMarkersContext.Provider
-                    value={factMarkersOf(messages.find((m) => m.id === ref.msgId) ?? { parts: [] })}
-                  >
-                    <ToolPart part={part} />
-                  </FactMarkersContext.Provider>
+                  <MemoToolPart part={part} facts={factMarkersById.get(ref.msgId) ?? EMPTY_FACTS} />
                 </div>
               ))}
             </div>
