@@ -77,16 +77,18 @@ export function TickerCard({ t, onOpen }: { t: HomeTicker; onOpen: (ticker: stri
       }
       className="group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
     >
+      {/* Ticker ellipsizes so the change badge always stays inside the card
+          instead of spilling onto the neighbor (task 055, same class as 054). */}
       <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-baseline gap-1.5 font-semibold whitespace-nowrap">
-          {t.ticker}
-          <WatchStar symbol={t.ticker} />
+        <span className="flex min-w-0 items-baseline gap-1.5 font-semibold">
+          <span className="truncate">{t.ticker}</span>
+          <WatchStar symbol={t.ticker} className="shrink-0" />
         </span>
         {singleDay ? (
-          <span className="text-[10px] uppercase tracking-wide text-neutral-400 whitespace-nowrap">1 day</span>
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-neutral-400 whitespace-nowrap">1 day</span>
         ) : (
           <span
-            className="text-xs font-medium whitespace-nowrap"
+            className="shrink-0 text-xs font-medium whitespace-nowrap"
             style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
           >
             {up ? "▲" : "▼"} {up ? "+" : ""}{t.changePct!.toFixed(1)}%
@@ -114,14 +116,15 @@ function PriceOnlyCard({ q, onOpen }: { q: WatchlistQuote; onOpen: (symbol: stri
       title={`Open the ${q.symbol} price chart · price coverage only`}
       className="group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-left transition-colors hover:border-blue-400 dark:hover:border-blue-500"
     >
+      {/* Same badge-overflow guard as TickerCard (task 055). */}
       <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-baseline gap-1.5 font-semibold whitespace-nowrap">
-          {q.symbol}
-          <WatchStar symbol={q.symbol} />
+        <span className="flex min-w-0 items-baseline gap-1.5 font-semibold">
+          <span className="truncate">{q.symbol}</span>
+          <WatchStar symbol={q.symbol} className="shrink-0" />
         </span>
         {q.changePct !== null && (
           <span
-            className="text-xs font-medium whitespace-nowrap"
+            className="shrink-0 text-xs font-medium whitespace-nowrap"
             style={{ color: up ? "var(--viz-up-text)" : "var(--viz-down-text)" }}
           >
             {up ? "▲" : "▼"} {up ? "+" : ""}{q.changePct.toFixed(1)}%
