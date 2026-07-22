@@ -179,7 +179,7 @@ export function HomeScreen({
       ? [...home].sort((a, b) => (b.revenueTtm ?? -Infinity) - (a.revenueTtm ?? -Infinity))
       : [...home].sort((a, b) => a.ticker.localeCompare(b.ticker));
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-8 py-10">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
         <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
           Ask about a stock.

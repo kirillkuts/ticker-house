@@ -856,7 +856,7 @@ export function Chat({
   if (isEmpty) {
     return (
       <div className="flex min-h-screen flex-col px-4">
-        <div className="mx-auto w-full max-w-2xl pt-4">
+        <div className="mx-auto w-full max-w-3xl pt-4">
           <Header>
             <ChatHistory />
           </Header>
