@@ -10,6 +10,7 @@ import type { CompanyOverviewData } from "@/lib/views";
 import { METRICS, type MetricKey } from "@/lib/metric-registry";
 import { formatValue, MetricLabel } from "./MetricResult";
 import { FollowUps, AskContext } from "./FollowUps";
+import { FactDot, useFactMarkers } from "./FactMarkers";
 import { WatchStar } from "../WatchStar";
 
 // Stat-tile label with the registry's plain-language tooltip (see MetricLabel).
@@ -265,6 +266,7 @@ const lastNonNull = <T,>(xs: (T | null)[]): T | null =>
 export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
   const t = data.ttm;
   const tk = data.ticker;
+  const factsFor = useFactMarkers(tk);
   const pricePoints = data.prices.map((p) => ({ ...p, label: p.date.slice(5) }));
   const quarterPoints = data.quarterly.map((q) => ({
     ...q,
@@ -574,11 +576,11 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
               {[...data.annual].reverse().map((r) => (
                 <tr key={r.periodEnd} className="border-b border-neutral-100 dark:border-neutral-900">
                   <td className="py-1.5 pr-3">{r.fiscalYear}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.revenue)}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.netIncome)}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{pct(r.netMarginPct)}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{usd(r.dilutedEps)}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.freeCashFlow)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.revenue)}<FactDot markers={factsFor(`FY${r.fiscalYear}`, "revenue")} /></td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.netIncome)}<FactDot markers={factsFor(`FY${r.fiscalYear}`, "net_income")} /></td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{pct(r.netMarginPct)}<FactDot markers={factsFor(`FY${r.fiscalYear}`, "net_margin")} /></td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{usd(r.dilutedEps)}<FactDot markers={factsFor(`FY${r.fiscalYear}`, "eps")} /></td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.freeCashFlow)}<FactDot markers={factsFor(`FY${r.fiscalYear}`, "fcf")} /></td>
                   <td className="py-1.5 text-right tabular-nums">{ratio(r.debtToEquity)}</td>
                 </tr>
               ))}

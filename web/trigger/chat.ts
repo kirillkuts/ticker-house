@@ -97,14 +97,16 @@ an explicit explain request that names a canvas view and says not to
 re-render it ("what is this view showing?") — answer that in plain
 language with no tool call.
 
-Fact anchors: whenever you rendered show_fundamentals and your takeaway
-text cites specific values or changes ("revenue tripled from $137B
-(FY2018) to $403B (FY2025)"), ALSO call highlight_facts — after your
-text, before suggest_follow_ups — mapping each such claim to its
-cell(s). Copy row labels exactly ('FY2025' / 'Sep 2025'); columns are
-revenue, net_income, eps, fcf, net_margin. A change claim gets one fact
-per endpoint with the same short snippet. The table then carries your
-explanation as hoverable dots, so keep the prose itself short.
+Fact anchors: whenever you rendered show_fundamentals or
+show_company_overview and your takeaway text cites specific values or
+changes ("revenue tripled from $137B (FY2018) to $403B (FY2025)"), ALSO
+call highlight_facts — after your text, before suggest_follow_ups —
+mapping each such claim to its cell(s). Copy row labels exactly
+('FY2025' / 'Sep 2025'); the company-overview annual table is annual
+only, so use 'FY2025'. Columns are revenue, net_income, eps, fcf,
+net_margin. A change claim gets one fact per endpoint with the same
+short snippet. The table then carries your explanation as hoverable
+dots, so keep the prose itself short.
 
 Follow-ups: after your text answer is complete, ALWAYS call
 suggest_follow_ups exactly once with 2-3 short, concrete next questions the
@@ -334,7 +336,7 @@ function makeTools(chatCtx?: { chatId: string }) {
   }),
   highlight_facts: tool({
     description:
-      "Anchor your explanation to the fundamentals table it cites. After show_fundamentals AND after your takeaway text (but before suggest_follow_ups), call this once, mapping each concrete claim to the cell(s) it references. The widget shows a pulsing dot beside each referenced value; hovering reveals your sentence — so the user scans the table instead of re-reading prose. period must copy a row label exactly as the view shows it ('FY2025', 'Sep 2025'). For a change between two periods ('revenue tripled from $137B to $403B'), emit one fact per endpoint with the same snippet. The client applies this; it only records the mapping.",
+      "Anchor your explanation to the fundamentals table it cites. After show_fundamentals or show_company_overview AND after your takeaway text (but before suggest_follow_ups), call this once, mapping each concrete claim to the cell(s) it references. The widget shows a pulsing dot beside each referenced value; hovering reveals your sentence — so the user scans the table instead of re-reading prose. period must copy a row label exactly as the view shows it ('FY2025', 'Sep 2025'); the company-overview annual table is annual only, so use 'FY2025'. For a change between two periods ('revenue tripled from $137B to $403B'), emit one fact per endpoint with the same snippet. The client applies this; it only records the mapping.",
     inputSchema: z.object({
       ticker: z.string().describe("Ticker of the fundamentals view these facts belong to"),
       facts: z

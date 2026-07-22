@@ -17,17 +17,21 @@ export interface FactMarker {
 export const FactMarkersContext = createContext<FactMarker[]>([]);
 
 // Loose match so "FY2025" hits "FY2025" and "Sep 2025" hits "Sep 2025" even
-// if casing/spacing drift a little in the model's copy of the label.
-const norm = (s: string) => s.toLowerCase().replace(/[\s'’]/g, "");
+// if casing/spacing drift a little in the model's copy of the label. Null-safe:
+// a malformed marker from the model (missing period/column) must be ignored,
+// never crash the whole widget render.
+const norm = (s: string | undefined | null) => (s ?? "").toLowerCase().replace(/[\s'’]/g, "");
 
 export function useFactMarkers(ticker: string) {
   const markers = useContext(FactMarkersContext);
+  const tk = (ticker ?? "").toUpperCase();
   return (periodLabel: string, column: string): FactMarker[] =>
     markers.filter(
       (m) =>
+        !!m.period &&
         m.column === column &&
         norm(m.period) === norm(periodLabel) &&
-        (!m.ticker || m.ticker.toUpperCase() === ticker.toUpperCase()),
+        (!m.ticker || m.ticker.toUpperCase() === tk),
     );
 }
 
@@ -40,7 +44,7 @@ export function FactDot({ markers }: { markers: FactMarker[] }) {
   if (markers.length === 0) return null;
   return (
     <span
-      className="relative ml-1.5 inline-flex h-2 w-2 cursor-help align-middle"
+      className="relative ml-1.5 inline-flex h-4 w-4 items-center justify-center cursor-help align-middle"
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
         const left = Math.min(
@@ -52,7 +56,7 @@ export function FactDot({ markers }: { markers: FactMarker[] }) {
       onMouseLeave={() => setTip(null)}
     >
       <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: "var(--viz-1)" }} />
-      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: "var(--viz-1)" }} />
+      <span className="relative inline-flex h-3 w-3 rounded-full" style={{ background: "var(--viz-1)" }} />
       {tip && (
         <span
           className="fixed z-50 rounded-lg border p-2.5 text-left text-[11px] font-normal leading-snug shadow-md pointer-events-none whitespace-normal"
