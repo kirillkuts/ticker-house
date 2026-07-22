@@ -43,7 +43,7 @@ export function ThemeToggle() {
     >
       {/* Light/dark toggle glyph (task 064): a sun (outline circle + rays)
           with a moon (filled circle) overlapping it. */}
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="shrink-0">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="shrink-0">
         <path
           d="M8 2.5V3.8M8 12.2V13.5M2.5 8H3.8M12.2 8H13.5M4.11 4.11l.92.92M11.89 11.89l-.92-.92M4.11 11.89l.92-.92"
           strokeLinecap="round"
