@@ -28,8 +28,7 @@ data/            universe.txt (enriched tickers); raw snapshots gitignored
 ClickHouse (local, Docker) holds four tables: `securities` (SEC + Massive),
 `daily_prices` (Massive grouped daily + splits/dividends), `financial_facts`
 and `financial_periods` (SEC XBRL company facts). All are
-`ReplacingMergeTree`, insert-only, replay-safe. Design notes live in
-`docs/tasks/*-findings.md` and `docs/epics/epic-02-findings.md`.
+`ReplacingMergeTree`, insert-only, replay-safe.
 
 ```bash
 make up                     # ClickHouse on :8123 / :9000
@@ -39,8 +38,10 @@ npm run sync:prices -- --from 2026-07-01 --to 2026-07-16
 npm run sync:financials     # fundamentals for the universe tickers
 ```
 
-Secrets go in `.env` (gitignored): `MASSIVE_API_KEY` for prices and profile
-enrichment. SEC endpoints need no key.
+Secrets go in `.env` (gitignored); copy `.env.example` to start.
+`MASSIVE_API_KEY` powers prices and profile enrichment. SEC endpoints need no
+key, but set `SEC_USER_AGENT` to a real contact email — SEC's fair-access
+policy requires a descriptive User-Agent.
 
 ## The app
 

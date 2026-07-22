@@ -1,7 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const UA = { "User-Agent": "TickerHouse kirill.kuts.dev@gmail.com" };
+// SEC's fair-access policy wants a descriptive User-Agent with a real contact.
+// Set SEC_USER_AGENT in your .env; the fallback is a placeholder to edit.
+const UA = { "User-Agent": process.env.SEC_USER_AGENT ?? "TickerHouse you@example.com" };
 
 export interface SecTickerRow {
   cik: number;

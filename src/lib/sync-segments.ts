@@ -10,7 +10,7 @@ import { loadCikOverrides, applyCikOverrides } from "./cik-overrides.js";
 // from every filing, including dimensional (segment) facts that the
 // companyfacts API drops. https://www.sec.gov/files/financial-statement-data-sets.pdf
 const FSDS_URL = (q: string) => `https://www.sec.gov/files/dera/data/financial-statement-data-sets/${q}.zip`;
-const UA = { "User-Agent": "TickerHouse kirill.kuts.dev@gmail.com" };
+const UA = { "User-Agent": process.env.SEC_USER_AGENT ?? "TickerHouse you@example.com" };
 
 // Concepts worth splitting by segment. Revenue is a fallback chain like FIELD_DEFS.
 const SEGMENT_CONCEPTS = new Set([

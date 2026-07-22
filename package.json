@@ -1,7 +1,7 @@
 {
-  "name": "stocks",
+  "name": "ticker-house",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "AI stock research workspace: natural-language questions become interactive dashboards backed by structured market data in ClickHouse.",
   "directories": {
     "doc": "docs"
   },
@@ -13,9 +13,8 @@
     "sync:filings": "tsx src/cli/sync-filings.ts"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "Kiril Kuts",
+  "license": "MIT",
   "dependencies": {
     "@clickhouse/client": "^1.23.1",
     "dotenv": "^17.4.2",

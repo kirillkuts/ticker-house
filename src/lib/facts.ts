@@ -27,7 +27,7 @@ interface SecFact {
   frame?: string;
 }
 
-const UA = { "User-Agent": "TickerHouse kirill.kuts.dev@gmail.com" };
+const UA = { "User-Agent": process.env.SEC_USER_AGENT ?? "TickerHouse you@example.com" };
 
 export async function fetchCompanyFacts(cik: number): Promise<Record<string, { units: Record<string, SecFact[]> }> | null> {
   const padded = String(cik).padStart(10, "0");
