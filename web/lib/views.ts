@@ -650,9 +650,12 @@ export interface CompanyOverviewData {
   annual: OverviewAnnualRow[];
   quarterly: OverviewQuarterRow[];
   peersCount: number;
-  // The rest of the covered universe, sorted by market cap — for "compare
-  // with" affordances in the widget.
+  // The rest of the covered universe, sorted by market cap — the full set
+  // behind the "Compare vs…" search box.
   peerTickers: string[];
+  // Relevant peers for the default chip list, sorted by market cap: same
+  // task-031 category, or same SEC sector when the industry is uncategorised.
+  sectorPeers: string[];
 }
 
 const num = (v: unknown): number | null => {
@@ -693,7 +696,7 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
   const marginPct = (n: string, d: string) =>
     `if(${d} IS NOT NULL AND ${d} != 0, toFloat64(${n}) / toFloat64(${d}) * 100, NULL)`;
 
-  const [rawPrices, annual, quarterly, snapshot] = await Promise.all([
+  const [rawPrices, annual, quarterly, snapshot, securityMeta] = await Promise.all([
     queryRows<{ date: string; close: number; symbolMatch: number }>(
       `SELECT toString(trade_date) AS date, toFloat64(close) AS close,
               ${SYMBOL_MATCH} AS symbolMatch
@@ -750,6 +753,12 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
       // company outside the snapshot can't render at all — never truncate.
       limit: 500,
     }),
+    // Ticker → SEC sector/industry for the whole active universe, so peers can
+    // be bucketed into the same category (task 031) — or the same coarse sector
+    // when the industry maps to no category — as the current company.
+    queryRows<{ ticker: string; sector: string; industry: string }>(
+      `SELECT upper(ticker) AS ticker, sector, industry FROM securities FINAL WHERE is_active`,
+    ),
   ]);
 
   if ("error" in snapshot) return { error: `Metric snapshot failed: ${snapshot.error}` };
@@ -830,6 +839,27 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
   const rev = num(mine.revenue);
   const fcf = num(mine.free_cash_flow);
 
+  // Covered universe minus self, sorted by market cap: the full "Compare vs…"
+  // list. A short relevant subset gets pulled out as the default chip set.
+  const metaOf = new Map(securityMeta.map((r) => [String(r.ticker).toUpperCase(), r]));
+  const mySlug = categorySlugOf(T, sec.industry);
+  const peerTickers = [...peers]
+    .sort((a, b) => (num(b.market_cap) ?? 0) - (num(a.market_cap) ?? 0))
+    .map((r) => String(r.ticker))
+    .filter((t) => t !== T);
+  const sameCategory = mySlug
+    ? peerTickers.filter((t) => categorySlugOf(t, metaOf.get(t)?.industry ?? "") === mySlug)
+    : [];
+  // Prefer the task-031 category grouping; fall back to the coarse SEC sector
+  // when the industry maps to no category, so companies like BX (industry
+  // "Investment Advice", uncategorised) still show financial peers rather than
+  // the market-cap leaderboard.
+  const sectorPeers = sameCategory.length
+    ? sameCategory
+    : sec.sector
+      ? peerTickers.filter((t) => (metaOf.get(t)?.sector ?? "") === sec.sector)
+      : [];
+
   return {
     ticker: T,
     companyName: sec.company_name,
@@ -881,10 +911,8 @@ export async function companyOverview(ticker: string): Promise<CompanyOverviewDa
     annual: annual.reverse(),
     quarterly: quarterly.reverse(),
     peersCount: peers.length,
-    peerTickers: [...peers]
-      .sort((a, b) => (num(b.market_cap) ?? 0) - (num(a.market_cap) ?? 0))
-      .map((r) => String(r.ticker))
-      .filter((t) => t !== T),
+    peerTickers,
+    sectorPeers,
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, CartesianGrid,
@@ -17,27 +17,76 @@ const metricLabel = (key: MetricKey, label?: string) => (
   <MetricLabel column={{ key, label: label ?? METRICS[key].label, unit: METRICS[key].unit }} />
 );
 
-// One-click head-to-head against any other covered company.
-function CompareWith({ tk, peers }: { tk: string; peers: string[] }) {
+const CHIP_CLASS =
+  "rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-0.5 font-medium text-neutral-600 dark:text-neutral-300 transition-colors enabled:hover:border-blue-400 enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400 disabled:opacity-50";
+
+// How many peers to show as chips before the rest goes behind the search box.
+const DEFAULT_PEER_CHIPS = 6;
+
+// One-click head-to-head. A short set of same-category peers shows as chips;
+// the full covered universe lives behind a "Compare vs…" typeahead so the
+// block stays a couple of rows instead of dumping the whole S&P list.
+function CompareWith({ tk, sectorPeers, allPeers }: { tk: string; sectorPeers: string[]; allPeers: string[] }) {
   const { ask, busy } = useContext(AskContext);
-  if (!ask || peers.length === 0) return null;
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  if (!ask || allPeers.length === 0) return null;
+
+  const compare = (p: string) =>
+    ask(`Compare ${tk} and ${p} head-to-head: P/E, P/S, revenue growth, net margin, return on equity and debt to equity`);
+
+  const chips = (sectorPeers.length ? sectorPeers : allPeers).slice(0, DEFAULT_PEER_CHIPS);
+  const q = query.trim().toUpperCase();
+  const matches = q ? allPeers.filter((p) => p.includes(q)).slice(0, 8) : [];
+
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
       <span className="text-neutral-400">Head-to-head vs</span>
-      {peers.map((p) => (
+      {chips.map((p) => (
         <button
           key={p}
           type="button"
           disabled={busy}
-          onClick={() =>
-            ask(`Compare ${tk} and ${p} head-to-head: P/E, P/S, revenue growth, net margin, return on equity and debt to equity`)
-          }
+          onClick={() => compare(p)}
           title={`Compare ${tk} with ${p}`}
-          className="rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-0.5 font-medium text-neutral-600 dark:text-neutral-300 transition-colors enabled:hover:border-blue-400 enabled:hover:text-blue-600 dark:enabled:hover:text-blue-400 disabled:opacity-50"
+          className={CHIP_CLASS}
         >
           {p}
         </button>
       ))}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          disabled={busy}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && matches.length > 0) { compare(matches[0]); setQuery(""); setOpen(false); }
+            if (e.key === "Escape") { setQuery(""); setOpen(false); }
+          }}
+          placeholder="Compare vs…"
+          aria-label="Compare with another covered company"
+          className="w-28 rounded-md border border-neutral-200 dark:border-neutral-800 bg-transparent px-2 py-0.5 text-neutral-600 dark:text-neutral-300 placeholder:text-neutral-400 focus:border-blue-400 focus:outline-none disabled:opacity-50"
+        />
+        {open && matches.length > 0 && (
+          <ul className="absolute left-0 z-20 mt-1 max-h-48 w-32 overflow-auto rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+            {matches.map((p) => (
+              <li key={p}>
+                <button
+                  type="button"
+                  // onMouseDown fires before the input's onBlur closes the list.
+                  onMouseDown={(e) => { e.preventDefault(); compare(p); setQuery(""); setOpen(false); }}
+                  className="block w-full px-2 py-1 text-left font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-blue-600 dark:hover:text-blue-400"
+                >
+                  {p}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -336,7 +385,7 @@ export function CompanyOverview({ data }: { data: CompanyOverviewData }) {
             { label: "Compare vs all peers", prompt: `Compare ${tk} with the other covered stocks on net margin, return on equity and revenue growth` },
           ]}
         />
-        <CompareWith tk={tk} peers={data.peerTickers ?? []} />
+        <CompareWith tk={tk} sectorPeers={data.sectorPeers ?? []} allPeers={data.peerTickers ?? []} />
       </Section>
 
       {/* Price */}
