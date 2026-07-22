@@ -4,16 +4,15 @@ import { redirect } from "next/navigation";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { auth } from "@trigger.dev/sdk";
+import { auth, tasks, runs } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
+import type { runBriefingNow } from "@/trigger/run-briefing";
 import { saveChat, recentChats, claimChat } from "@/lib/chats";
 import { companyOverview, categorySnapshot } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
 import { addToWatchlist, removeFromWatchlist, getWatchlist, recordInterest } from "@/lib/watchlist";
 import { recipeByKey } from "@/lib/recipes";
-import { runDailyBriefing } from "@/lib/briefing";
-import { latestDataDate } from "@/lib/daily-events";
 import { db, ensureSchema } from "@/lib/db";
 
 const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
@@ -119,19 +118,25 @@ export async function getBriefingSettingsAction(): Promise<BriefingSettings> {
   };
 }
 
-// Force-run today's briefing on demand (the "Run now" button) — for demos and
-// after editing the watchlist, without waiting for the morning cron. force
-// regenerates even if today's briefing exists, so a fresh watchlist shows up,
-// and it emails if Gmail creds are set. Detection anchors to the newest day in
-// the data (which may lag "today"), so events still surface.
-export async function runBriefingNowAction(): Promise<{ date: string; briefed: number; errors: string[] }> {
+// Force-run today's briefing on demand (the "Run now" button). Runs in Trigger,
+// not this request, so long multi-stock LLM generation isn't cut off by the
+// serverless function timeout. Returns the run id; the client polls
+// briefingRunStatusAction until it completes, then navigates.
+export async function runBriefingNowAction(): Promise<{ runId: string }> {
   const user = await requireUser();
-  const today = new Date().toISOString().slice(0, 10);
-  const dataDate = await latestDataDate();
-  const anchor = dataDate && dataDate < today ? dataDate : today;
-  const since = new Date(Date.parse(anchor) - 7 * 86400_000).toISOString().slice(0, 10);
-  const report = await runDailyBriefing(today, { since, force: true, onlyUserId: user.id });
-  return { date: report.date, briefed: report.briefings.length, errors: report.errors };
+  const handle = await tasks.trigger<typeof runBriefingNow>("run-briefing-now", { userId: user.id });
+  return { runId: handle.id };
+}
+
+export async function briefingRunStatusAction(
+  runId: string,
+): Promise<{ done: boolean; failed: boolean; date: string | null; briefed: number }> {
+  await requireUser();
+  const run = await runs.retrieve(runId);
+  const failed = ["FAILED", "CRASHED", "CANCELED", "TIMED_OUT", "SYSTEM_FAILURE", "INTERRUPTED"].includes(run.status);
+  const done = run.status === "COMPLETED";
+  const out = done ? (run.output as { date?: string; briefings?: unknown[] } | undefined) : undefined;
+  return { done, failed, date: out?.date ?? null, briefed: out?.briefings?.length ?? 0 };
 }
 
 export async function saveBriefingSettingsAction(recipeKey: string | null, customInstructions: string) {

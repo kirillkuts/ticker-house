@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { runBriefingNowAction } from "@/app/actions";
+import { runBriefingNowAction, briefingRunStatusAction } from "@/app/actions";
 
-// Force-runs today's briefing for the current user and reloads to show it.
-// For demos: add stocks to the watchlist, click this, see the briefing (and
-// the email) without waiting for the morning cron.
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Force-runs today's briefing for the current user via a Trigger.dev task
+// (so long LLM generation isn't cut off by the serverless timeout), polls the
+// run to completion, then reloads to show it. For demos: add stocks to the
+// watchlist, click this, see the briefing (and the email).
 export function RunBriefingButton() {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -19,13 +22,19 @@ export function RunBriefingButton() {
           start(async () => {
             setMsg(null);
             try {
-              const r = await runBriefingNowAction();
-              if (r.briefed === 0) {
-                setMsg("Add a stock to your watchlist first.");
-                return;
+              const { runId } = await runBriefingNowAction();
+              const deadline = Date.now() + 180_000;
+              while (Date.now() < deadline) {
+                await sleep(2000);
+                const s = await briefingRunStatusAction(runId);
+                if (s.failed) { setMsg("Run failed — see Trigger logs."); return; }
+                if (s.done) {
+                  if (s.briefed === 0) { setMsg("Add a stock to your watchlist first."); return; }
+                  window.location.assign(`/briefing?date=${s.date}`);
+                  return;
+                }
               }
-              if (r.errors.length) setMsg(`${r.errors.length} error(s) — see worker logs.`);
-              window.location.assign(`/briefing?date=${r.date}`);
+              setMsg("Still running — check back shortly.");
             } catch {
               setMsg("Run failed.");
             }
