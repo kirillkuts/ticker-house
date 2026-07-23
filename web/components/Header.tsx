@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signOutAction } from "@/app/actions";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -21,12 +22,12 @@ function Logo() {
 export function Header({ children }: { children?: React.ReactNode }) {
   return (
     <header className="@container flex items-center justify-between gap-2">
-      <a href="/" className="flex shrink-0 items-center gap-2.5" title="TickerHouse home">
+      <Link href="/" className="flex shrink-0 items-center gap-2.5" title="TickerHouse home">
         <Logo />
         <span className="hidden text-lg font-semibold tracking-tight @sm:inline">TickerHouse</span>
-      </a>
+      </Link>
       <div className="flex items-center gap-2">
-        <a
+        <Link
           href="/dashboard"
           title="Live dashboard of saved widgets"
           className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
@@ -38,8 +39,8 @@ export function Header({ children }: { children?: React.ReactNode }) {
             <rect x="9" y="9" width="5" height="5" rx="1" />
           </svg>
           <span className="hidden @lg:inline">Dashboard</span>
-        </a>
-        <a
+        </Link>
+        <Link
           href="/briefing"
           title="Daily watchlist briefing"
           className="flex items-center gap-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600"
@@ -49,7 +50,7 @@ export function Header({ children }: { children?: React.ReactNode }) {
             <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
           </svg>
           <span className="hidden @lg:inline">Briefing</span>
-        </a>
+        </Link>
         {children}
         <ThemeToggle />
         <form action={signOutAction}>

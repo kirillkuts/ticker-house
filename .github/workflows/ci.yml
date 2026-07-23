@@ -1,0 +1,34 @@
+name: CI
+
+# Quality gate for every change: type-check the root (sync CLIs + shared code),
+# then install, lint, and production-build the web app. The deploy-trigger
+# workflow only ships the Trigger task bundle and runs none of these checks, so
+# this is what actually catches type errors, lint regressions, and build breaks.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Root package: type-check the TypeScript sync CLIs and shared modules.
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+      # Web package: install, lint, and run the Next.js production build (which
+      # type-checks the app a second time as part of `next build`).
+      - run: npm ci
+        working-directory: web
+      - run: npm run lint
+        working-directory: web
+      - run: npm run build
+        working-directory: web

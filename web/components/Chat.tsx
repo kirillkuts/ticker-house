@@ -551,8 +551,13 @@ export function Chat({
   const [canvasPct, setCanvasPct] = useState(52);
   const dragging = useRef(false);
 
+  // Restore the saved divider width once, after mount. This must be an effect:
+  // localStorage is unavailable during SSR, so a lazy useState initializer
+  // would render the default on the server and a different width on the client,
+  // causing a hydration mismatch. This is a one-shot read, not a render loop.
   useEffect(() => {
     const saved = Number(localStorage.getItem("canvasPct"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount restore, not a cascading render
     if (saved >= 25 && saved <= 75) setCanvasPct(saved);
   }, []);
 
@@ -728,14 +733,20 @@ export function Chat({
   const factsCache = useRef(new Map<string, { sig: string; facts: FactMarker[] }>());
   const factMarkersById = useMemo(() => {
     const out = new Map<string, FactMarker[]>();
+    // This cache lives in a ref, so reading and writing .current during render
+    // is what the rule flags. That is the point of task 062: the Map instance
+    // is stable and deliberately shared across renders so memoized canvas
+    // widgets aren't repainted every token. Suppress the rule at each access.
     for (const m of messages) {
       if (m.role !== "assistant") continue;
       const facts = factMarkersOf(m);
       const sig = JSON.stringify(facts);
+      // eslint-disable-next-line react-hooks/refs -- intentional cross-render cache (task 062)
       const cached = factsCache.current.get(m.id);
       if (cached && cached.sig === sig) {
         out.set(m.id, cached.facts);
       } else {
+        // eslint-disable-next-line react-hooks/refs -- intentional cross-render cache (task 062)
         factsCache.current.set(m.id, { sig, facts });
         out.set(m.id, facts);
       }
@@ -750,6 +761,10 @@ export function Chat({
   // it can stay referentially stable (keeps AskContext from re-rendering every
   // widget's follow-up chips on each streamed token — task 062).
   const canvasPartsRef = useRef(canvasParts);
+  // Sync the ref to the latest value on every render so ask() (below) can read
+  // the current canvas without being rebuilt each token. Writing a ref during
+  // render is the intended pattern here (task 062).
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ask() stable while reading latest canvasParts (task 062)
   canvasPartsRef.current = canvasParts;
   const ask = useCallback((text: string, opts?: { fast?: boolean }) => {
     signals.current.push({ kind: opts?.fast ? "chip" : "typed", text: text.slice(0, 160) });
