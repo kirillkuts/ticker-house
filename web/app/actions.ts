@@ -7,7 +7,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { auth, tasks, runs } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import type { runBriefingNow } from "@/trigger/run-briefing";
-import { saveChat, recentChats, claimChat } from "@/lib/chats";
+import { saveChat, recentChats, claimChat, userOwnsChat } from "@/lib/chats";
 import { companyOverview, categorySnapshot } from "@/lib/views";
 import { saveDashboardWidget, removeDashboardWidget, listDashboards, createDashboard, renameDashboard, deleteDashboard } from "@/lib/dashboard";
 import { createUser, verifyUser, startSession, endSession, requireUser, currentUser } from "@/lib/auth";
@@ -20,11 +20,17 @@ const startTickerChatSession = chat.createStartSessionAction("ticker-chat");
 // Session start is the trusted spot to bind chat → user (task 044): the
 // browser never supplies a userId; the trigger job's tools look the owner up
 // by chatId instead. requireUser also gates anonymous session starts.
+//
+// The claim is atomic and authoritative: if params.chatId already belongs to
+// another user, claimChat returns false and we refuse. Booting the session
+// anyway would run the agent — and its watchlist tools — as that other owner,
+// since the trigger job resolves the owner from chatId (trigger/chat.ts).
 export async function startChatSession(
   params: Parameters<typeof startTickerChatSession>[0],
 ) {
   const user = await requireUser();
-  await claimChat(user.id, params.chatId);
+  const owned = await claimChat(user.id, params.chatId);
+  if (!owned) throw new Error("This chat belongs to another account.");
   return startTickerChatSession(params);
 }
 
@@ -303,8 +309,15 @@ export async function summarizeInterestAction(
   }
 }
 
+// A public token scoped to a chat's realtime session grants read AND write to
+// that session's stream, so it must only be minted for a chat the caller owns.
+// requireUser alone (any signed-in user) let one account mint a token for
+// another's chat; the ownership gate closes that.
 export async function mintChatAccessToken(chatId: string) {
-  await requireUser();
+  const user = await requireUser();
+  if (!(await userOwnsChat(user.id, chatId))) {
+    throw new Error("This chat belongs to another account.");
+  }
   return auth.createPublicToken({
     scopes: {
       read: { sessions: chatId },

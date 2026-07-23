@@ -1,9 +1,10 @@
 name: CI
 
 # Quality gate for every change: type-check the root (sync CLIs + shared code),
-# then install, lint, and production-build the web app. The deploy-trigger
-# workflow only ships the Trigger task bundle and runs none of these checks, so
-# this is what actually catches type errors, lint regressions, and build breaks.
+# then install, lint, and production-build the web app, and run the DB-backed
+# authorization tests. The deploy-trigger workflow only ships the Trigger task
+# bundle and runs none of these checks, so this is what actually catches type
+# errors, lint regressions, build breaks, and auth regressions.
 
 on:
   push:
@@ -32,3 +33,35 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
+
+  # Integration tests that need a real database (chat ownership authorization).
+  # A throwaway Postgres service stands in for the docker-compose one; the test
+  # bootstraps its own schema via ensureSchema() and cleans up its rows.
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ticker_house
+          POSTGRES_USER: ticker
+          POSTGRES_PASSWORD: ticker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ticker -d ticker_house"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: web
+    env:
+      DATABASE_URL: postgresql://ticker:ticker@localhost:5432/ticker_house
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test

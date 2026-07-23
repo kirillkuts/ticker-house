@@ -23,13 +23,30 @@ export async function saveChat(userId: string, chatId: string, title: string, me
 // pins chat_id → user_id so the trigger job's tools can resolve the user from
 // the chatId without trusting anything browser-supplied. The placeholder row
 // is invisible in recents (empty messages) and overwritten by the first save.
-export async function claimChat(userId: string, chatId: string): Promise<void> {
+//
+// Returns true only when the caller now owns the chat: either the row was
+// newly inserted, or it already existed and belongs to this user. Returns
+// false when the chatId already belongs to someone else. This is a single
+// atomic statement so a colliding chat_id can never be silently accepted:
+// the insert-or-get CTE yields the row's real owner in every case (a fresh
+// insert returns userId; a conflict returns the existing owner), and the
+// caller compares. Without this, a claim collision no-oped and the agent
+// still booted, resolving — and acting as — the original owner.
+export async function claimChat(userId: string, chatId: string): Promise<boolean> {
   await ensureSchema();
-  await db().query(
-    `INSERT INTO chats (chat_id, user_id, title, messages) VALUES ($1, $2, '', '[]')
-     ON CONFLICT (chat_id) DO NOTHING`,
+  const res = await db().query<{ user_id: string }>(
+    `WITH ins AS (
+       INSERT INTO chats (chat_id, user_id, title, messages) VALUES ($1, $2, '', '[]')
+       ON CONFLICT (chat_id) DO NOTHING
+       RETURNING user_id
+     )
+     SELECT user_id FROM ins
+     UNION ALL
+     SELECT user_id FROM chats WHERE chat_id = $1
+     LIMIT 1`,
     [chatId, userId],
   );
+  return res.rows[0]?.user_id === userId;
 }
 
 export async function chatOwner(chatId: string): Promise<string | null> {
@@ -39,6 +56,15 @@ export async function chatOwner(chatId: string): Promise<string | null> {
     [chatId],
   );
   return res.rows[0]?.user_id ?? null;
+}
+
+// Read-only ownership gate, shared by token minting: true when the chat is
+// unclaimed (no owner bound yet) or already owned by this user, false when it
+// belongs to someone else. Mirrors claimChat's success condition without
+// writing a row — a mint must never hand a foreign chat's session token out.
+export async function userOwnsChat(userId: string, chatId: string): Promise<boolean> {
+  const owner = await chatOwner(chatId);
+  return owner === null || owner === userId;
 }
 
 export interface StoredChat {
